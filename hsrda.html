@@ -505,18 +505,81 @@ function smoothElevation(elevations) {
     return smoothed;
 }
 
-// --- App ---
+// ... (保留原有的 CONFIG, state, Math functions 部分) ...
+// ... (保留 smoothElevation 函数) ...
+
+// ==========================================
+// NEW: Global Request Manager (总把控)
+// ==========================================
+const requestManager = {
+    queue: [],
+    isProcessing: false,
+    lastRequestTime: 0,
+    minInterval: 1000, // 两次请求至少间隔 1000ms (1秒)
+
+    add: function(tasks) {
+        // tasks 是一个数组，包含多个 fetch 任务
+        this.queue.push(...tasks);
+        this.process();
+    },
+
+    clear: function() {
+        this.queue = [];
+        this.isProcessing = false;
+    },
+
+    process: async function() {
+        if (this.isProcessing || this.queue.length === 0) return;
+        this.isProcessing = true;
+
+        while (this.queue.length > 0) {
+            // 1. 检查冷却时间，不够就等
+            const now = Date.now();
+            const timeSinceLast = now - this.lastRequestTime;
+            if (timeSinceLast < this.minInterval) {
+                await wait(this.minInterval - timeSinceLast);
+            }
+
+            // 2. 取出任务执行 (如果由于用户取消操作导致 signal 废弃，则跳过)
+            const task = this.queue.shift();
+            if (task.signal && task.signal.aborted) {
+                continue; // 任务已取消，直接跳过
+            }
+
+            try {
+                await task.execute(); 
+            } catch (e) {
+                console.warn("Request throttled or failed:", e);
+            }
+            
+            this.lastRequestTime = Date.now();
+            
+            // 更新进度条 UI (根据剩余队列长度估算)
+            const loadingFill = document.getElementById('loading-bar-fill');
+            if(loadingFill && this.queue.length > 0) {
+                 // 简单的视觉反馈，让它动起来
+                 loadingFill.style.width = "80%"; 
+            }
+        }
+
+        // 全部完成
+        this.isProcessing = false;
+        document.getElementById('loading-container').style.display = 'none';
+        document.getElementById('loading-bar-fill').style.width = "0%";
+    }
+};
+
 const app = {
     map: null,
     
     init: function() {
+        // ... (保持原有的 init 代码不变) ...
         this.map = L.map('map').setView([-34.1, 150.95], 10);
         L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
             attribution: '©OpenStreetMap, ©CartoDB'
         }).addTo(this.map);
         setTimeout(() => { this.map.invalidateSize(); }, 200);
 
-        // Interaction
         this.map.on('mousedown', () => { 
             if(state.mode === 'build') {
                 state.isPainting = true;
@@ -532,8 +595,10 @@ const app = {
             if (state.mode === 'plan') this.addControlPoint(e.latlng);
         });
 
+        // Chart Initialization (保持不变)
         const ctx = document.getElementById('profileChart').getContext('2d');
         state.chartInstance = new Chart(ctx, {
+            // ... (复制你原来的 chart 配置) ...
             type: 'line',
             data: {
                 datasets: [{
@@ -542,7 +607,7 @@ const app = {
                     borderColor: CONFIG.colors.normal,
                     backgroundColor: 'rgba(0, 255, 255, 0.1)',
                     fill: true,
-                    tension: 0.2, // Smoother visual curve
+                    tension: 0.2, 
                     pointRadius: 1,
                     segment: {
                         borderColor: ctx => {
@@ -588,6 +653,7 @@ const app = {
     },
 
     setMode: function(mode) {
+        // ... (保持不变) ...
         state.mode = mode;
         document.getElementById('btn-plan-mode').className = mode === 'plan' ? 'toggle-active' : '';
         document.getElementById('btn-build-mode').className = mode === 'build' ? 'toggle-active' : '';
@@ -609,7 +675,7 @@ const app = {
         document.getElementById(`tool-${tool}`).classList.add('active');
     },
 
-    addControlPoint: function(latlng) {
+    addControlPoint: function(latlng, index = null) {
         const marker = L.marker(latlng, { draggable: true }).addTo(this.map);
         marker.on('dragend', () => this.scheduleRecalc());
         marker.on('contextmenu', () => {
@@ -619,18 +685,50 @@ const app = {
                 this.scheduleRecalc();
             }
         });
-        state.controlPoints.push(marker);
+        
+        if (index !== null) {
+            state.controlPoints.splice(index, 0, marker);
+        } else {
+            state.controlPoints.push(marker);
+        }
         this.scheduleRecalc();
+    },
+
+    // NEW: Auto-split long segments
+    insertIntermediatePoints: function() {
+        const MAX_DIST_METERS = 10000; // 严格按照你的逻辑：10km阈值
+        let pointsAdded = false;
+
+        // 遍历所有点，检查间距
+        for (let i = 0; i < state.controlPoints.length - 1; i++) {
+            const p1 = state.controlPoints[i].getLatLng();
+            const p2 = state.controlPoints[i+1].getLatLng();
+            const dist = getDistance(p1.lat, p1.lng, p2.lat, p2.lng);
+
+            if (dist > MAX_DIST_METERS) {
+                // 发现超长距离，取中点
+                const midLat = (p1.lat + p2.lat) / 2;
+                const midLng = (p1.lng + p2.lng) / 2;
+                
+                // 在 i+1 的位置插入一个新点（这会自动触发 scheduleRecalc 排队下一次计算）
+                this.addControlPoint([midLat, midLng], i + 1);
+                
+                pointsAdded = true;
+                // 一次循环只加一批点，然后跳出，让视觉先更新，防止浏览器卡死
+                break; 
+            }
+        }
+        return pointsAdded;
     },
 
     clearAll: function() {
         if(!confirm("Clear all points and start over?")) return;
+        requestManager.clear(); // Clear pending API calls
         state.controlPoints.forEach(m => this.map.removeLayer(m));
         state.controlPoints = [];
         state.segments = [];
         state.routeLayer.clearLayers();
         
-        // Reset Chart
         state.chartInstance.data.labels = [];
         state.chartInstance.data.datasets[0].data = [];
         state.chartInstance.update();
@@ -640,24 +738,72 @@ const app = {
 
     scheduleRecalc: function() {
         if(state.recalcTimer) clearTimeout(state.recalcTimer);
+        // Abort previous distinct fetch operation logic handled in manager
         if(state.abortController) {
             state.abortController.abort();
             state.abortController = null;
         }
-        state.recalcTimer = setTimeout(() => this.recalculateRoute(), 400);
+        // Debounce waiting for user to stop dragging
+        state.recalcTimer = setTimeout(() => this.recalculateRoute(), 500);
     },
 
+   // 2. 修改后的主计算逻辑：如果加了点，立刻画线，不留空白
     recalculateRoute: async function() {
+        // 如果点太少，清空
         if (state.controlPoints.length < 2) {
             state.segments = [];
             if(state.routeLayer) state.routeLayer.clearLayers();
             this.updateStats();
-            this.renderChart(); // Clear chart
+            this.renderChart();
             return;
         }
 
+        // --- 核心逻辑修正 ---
+        // 1. 先检查是否需要分段
+        const geometryChanged = this.insertIntermediatePoints();
+
+        // 2. 如果因为距离太远插入了新点（geometryChanged 为 true）
+        if (geometryChanged) {
+            // 【关键修改】不要直接 return！先立刻把线画出来！
+            // 哪怕没有海拔数据，也要先让用户看到点和点是用线连着的。
+            
+            const latlngs = state.controlPoints.map(m => m.getLatLng());
+            // 仅根据几何形状生成线段
+            const rawSegments = resamplePolyline(latlngs, CONFIG.sampleResolution);
+            
+            // 填充临时数据，确保 renderMapSegments 能工作
+            state.segments = rawSegments.map(s => ({
+                ...s, 
+                elev: 0, // 临时海拔
+                grade: 0, 
+                radius: Infinity, 
+                type: 'normal'
+            }));
+            
+            // 立刻渲染：连接所有点！不再有孤岛！
+            this.renderMapSegments();
+            this.updateStats(); // 更新长度显示
+            
+            // 更新提示文字
+            const loadingText = document.getElementById('loading-text');
+            if(loadingText) {
+                document.getElementById('loading-container').style.display = 'block';
+                loadingText.innerHTML = '<i class="fas fa-ruler-combined"></i> Auto-splitting long segment...';
+            }
+
+            // 现在可以退出了，等待 scheduleRecalc 触发的下一次递归（去处理更细的分段或请求数据）
+            return; 
+        }
+        // -------------------
+
         state.abortController = new AbortController();
         const signal = state.abortController.signal;
+        
+        // UI 更新：开始请求数据
+        const loadingContainer = document.getElementById('loading-container');
+        const loadingText = document.getElementById('loading-text');
+        if(loadingText) loadingText.innerHTML = '<i class="fas fa-satellite-dish"></i> Syncing Elevation...';
+        
         const latlngs = state.controlPoints.map(m => m.getLatLng());
         const rawSegments = resamplePolyline(latlngs, CONFIG.sampleResolution);
         
@@ -669,56 +815,69 @@ const app = {
         });
 
         if(missingCoords.length > 0) {
-            const loadingContainer = document.getElementById('loading-container');
-            const loadingFill = document.getElementById('loading-bar-fill');
             loadingContainer.style.display = 'block';
-            try {
-                const BATCH = 100;
-                const chunks = [];
-                for(let i=0; i<missingCoords.length; i+=BATCH) chunks.push(missingCoords.slice(i, i+BATCH));
-                for(let i=0; i<chunks.length; i++) {
-                    if(signal.aborted) throw new Error("Cancelled");
-                    const chunk = chunks[i];
-                    const lats = chunk.map(s => s.lat).join(',');
-                    const lngs = chunk.map(s => s.lng).join(',');
-                    const url = `${CONFIG.elevationApiUrl}?latitude=${lats}&longitude=${lngs}`;
-                    const res = await fetch(url, { signal });
-                    if(!res.ok) throw new Error("API Error");
-                    const json = await res.json();
-                    if(json.elevation) {
-                        json.elevation.forEach((elev, idx) => {
-                            const seg = chunk[idx];
-                            seg.elev = elev;
-                            const key = `${seg.lat.toFixed(4)},${seg.lng.toFixed(4)}`;
-                            state.elevationCache.set(key, elev);
-                        });
-                    }
-                    const totalPct = Math.round(((i+1)/chunks.length)*100);
-                    loadingFill.style.width = `${totalPct}%`;
-                    if(i < chunks.length-1) await wait(250);
-                }
-            } catch(e) { if(e.message !== "Cancelled") console.error(e); } 
-            finally { if(!signal.aborted) loadingContainer.style.display = 'none'; }
-        }
+            requestManager.clear();
 
-        // Apply Terrain Smoothing to reducing noise
+            const BATCH_SIZE = 80; 
+            const tasks = [];
+            
+            for(let i=0; i<missingCoords.length; i+=BATCH_SIZE) {
+                const chunk = missingCoords.slice(i, i+BATCH_SIZE);
+                tasks.push({
+                    signal: signal,
+                    execute: async () => {
+                        const lats = chunk.map(s => s.lat).join(',');
+                        const lngs = chunk.map(s => s.lng).join(',');
+                        const url = `${CONFIG.elevationApiUrl}?latitude=${lats}&longitude=${lngs}`;
+                        
+                        const res = await fetch(url, { signal });
+                        if(!res.ok) throw new Error("API Error " + res.status);
+                        const json = await res.json();
+                        
+                        if(json.elevation) {
+                            json.elevation.forEach((elev, idx) => {
+                                const seg = chunk[idx];
+                                seg.elev = elev;
+                                const key = `${seg.lat.toFixed(4)},${seg.lng.toFixed(4)}`;
+                                state.elevationCache.set(key, elev);
+                            });
+                        }
+                        this.processDataAndRender(rawSegments);
+                    }
+                });
+            }
+            requestManager.add(tasks);
+        } else {
+            this.processDataAndRender(rawSegments);
+            // 数据加载完，隐藏加载框
+            loadingContainer.style.display = 'none';
+        }
+    },
+
+    processDataAndRender: function(rawSegments) {
+        // Apply Terrain Smoothing
         const rawElevs = rawSegments.map(s => s.elev || 0);
         const smoothedElevs = smoothElevation(rawElevs);
 
         state.segments = rawSegments.map((s, i) => ({
             ...s,
             elev: smoothedElevs[i], 
-            // Auto bridge only if very low
-            type: (smoothedElevs[i] <= 1.0) ? 'bridge' : 'normal',
+            type: state.segments[i] ? state.segments[i].type : ((smoothedElevs[i] <= 1.0) ? 'bridge' : 'normal'), // Preserve type if exists
             grade: 0, radius: Infinity
         }));
+
+        // Preserve painted types if geometry roughly matches (Advanced logic simplified here)
+        // For now, we recalculate purely based on index which is brittle if lengths change, 
+        // but 'insertIntermediatePoints' helps keep structure stable.
 
         this.calcDerivatives();
         this.updateParams();
     },
 
+    // ... (保留 calcDerivatives, applyBuildTool, renderMapSegments 等后续代码) ...
     calcDerivatives: function() {
         const segs = state.segments;
+        // ... (保持原代码内容) ...
         for (let i = 0; i < segs.length; i++) {
             if (i > 0) {
                 const distDiff = segs[i].dist - segs[i-1].dist;
@@ -745,7 +904,8 @@ const app = {
             else segs[i].length_m = 0; 
         }
     },
-
+    
+    // ... (以下所有函数如 applyBuildTool, renderMapSegments, updateCost 等保持不变) ...
     applyBuildTool: function(index, isShift) {
         if (state.mode !== 'build') return;
         const targetType = state.buildTool;
@@ -763,7 +923,7 @@ const app = {
     },
 
     renderMapSegments: function() {
-        if (state.routeLayer) state.routeLayer.clearLayers();
+         if (state.routeLayer) state.routeLayer.clearLayers();
         else state.routeLayer = L.layerGroup().addTo(this.map);
 
         if (state.mode === 'plan') {
@@ -814,7 +974,7 @@ const app = {
             }
         }
     },
-
+    
     renderChart: function() {
         if (!state.chartInstance) return;
         const showGrade = document.getElementById('chk-grade-overlay').checked;
@@ -937,7 +1097,7 @@ const app = {
         this.updateStats(); 
         this.renderChart(); // Force chart update
     },
-
+    // ... (保留 updateCost, downloadCSV, downloadImages, saveDesign, loadDesign 等) ...
     costEstimator: {
         presets: {
             low: { normal: 800000, bridge: 4000000, tunnel: 7000000 },
