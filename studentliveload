@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Load Calculator</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f4f7f6;
+            color: #333;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            background: #fff;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            max-width: 500px;
+            width: 100%;
+        }
+        h2 {
+            text-align: center;
+            color: #2c3e50;
+            margin-top: 0;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            font-weight: bold;
+            margin-bottom: 8px;
+        }
+        input[type="number"], select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            box-sizing: border-box;
+            font-size: 16px;
+        }
+        .radio-group {
+            margin-bottom: 15px;
+        }
+        .radio-group label {
+            display: inline;
+            font-weight: normal;
+            margin-right: 15px;
+        }
+        .hidden {
+            display: none;
+        }
+        .dimensions-group {
+            display: flex;
+            gap: 10px;
+        }
+        .dimensions-group input {
+            width: 50%;
+        }
+        button {
+            width: 100%;
+            padding: 12px;
+            background-color: #3498db;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            font-size: 18px;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+        button:hover {
+            background-color: #2980b9;
+        }
+        .result {
+            margin-top: 25px;
+            padding: 20px;
+            background-color: #e8f4f8;
+            border-left: 5px solid #3498db;
+            border-radius: 5px;
+        }
+        .result h3 {
+            margin-top: 0;
+            margin-bottom: 10px;
+            color: #2980b9;
+        }
+        .note {
+            font-size: 0.85em;
+            color: #666;
+            margin-top: 5px;
+            display: block;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>Guess the Live Load</h2>
+    
+    <div class="form-group">
+        <label for="students">Number of Students:</label>
+        <input type="number" id="students" min="0" placeholder="e.g. 30">
+    </div>
+
+    <div class="form-group">
+        <label for="mass">Average Student Mass (kg): <span class="note">(Tutor input)</span></label>
+        <input type="number" id="mass" value="60" min="1" step="0.1">
+    </div>
+
+    <div class="form-group">
+        <label>Room Area Selection:</label>
+        <div class="radio-group">
+            <input type="radio" id="usePreset" name="areaType" value="preset" checked onchange="toggleAreaInput()">
+            <label for="usePreset">Preset Room</label>
+            
+            <input type="radio" id="useCustom" name="areaType" value="custom" onchange="toggleAreaInput()">
+            <label for="useCustom">Custom Dimensions</label>
+        </div>
+
+        <div id="presetContainer">
+            <select id="presetRoom">
+                <option value="55">Civil Eng Seminar Room (2) 211 (55 m²)</option>
+                <option value="50">Civil Eng Seminar Room (4) 304 (50 m²)</option>
+                <option value="54">Carslaw Seminar Room 374 (54 m²)</option>
+                <option value="66">BHB Seminar Room 2250 (66 m²)</option>
+            </select>
+        </div>
+
+        <div id="customContainer" class="hidden">
+            <div class="dimensions-group">
+                <input type="number" id="length" placeholder="Length (m)" min="0" step="0.1">
+                <input type="number" id="width" placeholder="Width (m)" min="0" step="0.1">
+            </div>
+        </div>
+    </div>
+
+    <button onclick="calculateLoad()">Calculate Live Load</button>
+
+    <div id="resultBox" class="result hidden">
+        <h3>Results</h3>
+        <p><strong>Total Force:</strong> <span id="outForce">0</span> kN</p>
+        <p><strong>Room Area:</strong> <span id="outArea">0</span> m²</p>
+        <p style="font-size: 1.2em; border-top: 1px solid #ccc; padding-top: 10px; margin-top: 10px;">
+            <strong>Estimated Live Load:</strong> <span id="outLoad" style="color: #e74c3c; font-weight: bold;">0</span> kN/m² (kPa)
+        </p>
+    </div>
+</div>
+
+<script>
+    // Constants
+    const g = 9.81; // m/s^2
+
+    // Toggle between preset room and custom dimensions
+    function toggleAreaInput() {
+        const usePreset = document.getElementById('usePreset').checked;
+        const presetContainer = document.getElementById('presetContainer');
+        const customContainer = document.getElementById('customContainer');
+
+        if (usePreset) {
+            presetContainer.classList.remove('hidden');
+            customContainer.classList.add('hidden');
+        } else {
+            presetContainer.classList.add('hidden');
+            customContainer.classList.remove('hidden');
+        }
+    }
+
+    // Main calculation function
+    function calculateLoad() {
+        const studentsInput = document.getElementById('students').value;
+        const massInput = document.getElementById('mass').value;
+        const usePreset = document.getElementById('usePreset').checked;
+        
+        // Validation
+        if (!studentsInput || studentsInput < 0) {
+            alert("Please enter a valid number of students.");
+            return;
+        }
+
+        const numStudents = parseFloat(studentsInput);
+        const avgMass = parseFloat(massInput) || 60; // Default to 60 if somehow cleared
+
+        let area = 0;
+
+        // Determine area based on radio selection
+        if (usePreset) {
+            area = parseFloat(document.getElementById('presetRoom').value);
+        } else {
+            const length = parseFloat(document.getElementById('length').value);
+            const width = parseFloat(document.getElementById('width').value);
+            if (!length || !width || length <= 0 || width <= 0) {
+                alert("Please enter valid length and width dimensions.");
+                return;
+            }
+            area = length * width;
+        }
+
+        // Calculations
+        // Force (Newtons) = mass * g
+        // Total Force (kiloNewtons) = (students * mass * g) / 1000
+        const totalForceKN = (numStudents * avgMass * g) / 1000;
+        
+        // Live Load (kPa or kN/m^2) = Total Force / Area
+        const liveLoadKPa = totalForceKN / area;
+
+        // Output results formatting
+        document.getElementById('outForce').textContent = totalForceKN.toFixed(2);
+        document.getElementById('outArea').textContent = area.toFixed(2);
+        document.getElementById('outLoad').textContent = liveLoadKPa.toFixed(3);
+
+        // Show result box
+        document.getElementById('resultBox').classList.remove('hidden');
+    }
+</script>
+
+</body>
+</html>
