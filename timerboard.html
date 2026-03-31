@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dual Timer Board</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: Arial, Helvetica, sans-serif;
+      background: #f4f6f8;
+      color: #1f2933;
+      padding: 24px;
+    }
+
+    .wrap {
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      margin: 0 0 16px;
+      font-size: 28px;
+    }
+
+    .controls {
+      background: #ffffff;
+      border-radius: 14px;
+      padding: 18px;
+      box-shadow: 0 6px 18px rgba(0, 0, 0, 0.08);
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+
+    .controls input,
+    .controls select,
+    .controls button {
+      font-size: 16px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid #c9d2dc;
+    }
+
+    .controls input {
+      min-width: 260px;
+      flex: 1 1 260px;
+    }
+
+    .controls button {
+      background: #1f6feb;
+      color: white;
+      border: none;
+      cursor: pointer;
+      font-weight: 600;
+    }
+
+    .controls button:hover {
+      background: #1557b0;
+    }
+
+    .board {
+      background: #ffffff;
+      border-radius: 14px;
+      box-shadow: 0 6px 18px rgba(0, 0, 0, 0.08);
+      overflow: hidden;
+    }
+
+    .header,
+    .row {
+      display: grid;
+      grid-template-columns: 1.15fr 1fr 1fr;
+      gap: 0;
+      align-items: stretch;
+    }
+
+    .header {
+      background: #e9eef5;
+      font-weight: 700;
+    }
+
+    .cell {
+      padding: 14px 16px;
+      border-bottom: 1px solid #e4e9ef;
+      min-height: 86px;
+      display: flex;
+      align-items: center;
+    }
+
+    .header .cell {
+      min-height: auto;
+      border-bottom: 1px solid #d4dce6;
+    }
+
+    .row:last-child .cell {
+      border-bottom: none;
+    }
+
+    .name-cell {
+      font-weight: 600;
+      word-break: break-word;
+    }
+
+    .timer-box {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .time {
+      font-size: 28px;
+      font-weight: 700;
+      letter-spacing: 1px;
+    }
+
+    .btn-row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .btn-row button {
+      padding: 8px 10px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    .start-btn { background: #1f9d55; color: white; }
+    .pause-btn { background: #d97706; color: white; }
+    .reset-btn { background: #64748b; color: white; }
+    .delete-btn { background: #dc2626; color: white; }
+
+    .empty {
+      color: #9aa5b1;
+      font-style: italic;
+    }
+
+    .finished {
+      background: #ecfdf3;
+      border-radius: 10px;
+      padding: 8px 10px;
+      color: #157347;
+      font-weight: 700;
+      display: inline-block;
+    }
+
+    @media (max-width: 800px) {
+      .header,
+      .row {
+        grid-template-columns: 1fr;
+      }
+
+      .header .cell {
+        border-bottom: 1px solid #d4dce6;
+      }
+
+      .cell {
+        min-height: auto;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Timer Board</h1>
+
+    <div class="controls">
+      <input id="timerName" type="text" placeholder="Enter timer name" />
+      <select id="timerType">
+        <option value="10">10 minutes</option>
+        <option value="25">25 minutes</option>
+      </select>
+      <button id="addTimerBtn">Add Timer</button>
+    </div>
+
+    <div class="board">
+      <div class="header">
+        <div class="cell">Name</div>
+        <div class="cell">10 mins</div>
+        <div class="cell">25 mins</div>
+      </div>
+      <div id="timerRows"></div>
+    </div>
+  </div>
+
+  <script>
+    const timerRows = document.getElementById('timerRows');
+    const timerNameInput = document.getElementById('timerName');
+    const timerTypeSelect = document.getElementById('timerType');
+    const addTimerBtn = document.getElementById('addTimerBtn');
+
+    let timers = [];
+    let nextId = 1;
+
+    function formatTime(seconds) {
+      const mins = String(Math.floor(seconds / 60)).padStart(2, '0');
+      const secs = String(seconds % 60).padStart(2, '0');
+      return `${mins}:${secs}`;
+    }
+
+    function addTimer() {
+      const name = timerNameInput.value.trim();
+      const minutes = Number(timerTypeSelect.value);
+
+      if (!name) {
+        alert('Please enter a timer name.');
+        timerNameInput.focus();
+        return;
+      }
+
+      timers.push({
+        id: nextId++,
+        name,
+        duration: minutes,
+        remaining: minutes * 60,
+        intervalId: null,
+        finished: false
+      });
+
+      timerNameInput.value = '';
+      timerNameInput.focus();
+      render();
+    }
+
+    function startTimer(id) {
+      const timer = timers.find(t => t.id === id);
+      if (!timer || timer.intervalId || timer.finished) return;
+
+      timer.intervalId = setInterval(() => {
+        if (timer.remaining > 0) {
+          timer.remaining -= 1;
+          render();
+        }
+
+        if (timer.remaining <= 0) {
+          clearInterval(timer.intervalId);
+          timer.intervalId = null;
+          timer.remaining = 0;
+          timer.finished = true;
+          render();
+        }
+      }, 1000);
+
+      render();
+    }
+
+    function pauseTimer(id) {
+      const timer = timers.find(t => t.id === id);
+      if (!timer || !timer.intervalId) return;
+      clearInterval(timer.intervalId);
+      timer.intervalId = null;
+      render();
+    }
+
+    function resetTimer(id) {
+      const timer = timers.find(t => t.id === id);
+      if (!timer) return;
+      clearInterval(timer.intervalId);
+      timer.intervalId = null;
+      timer.remaining = timer.duration * 60;
+      timer.finished = false;
+      render();
+    }
+
+    function deleteTimer(id) {
+      const timer = timers.find(t => t.id === id);
+      if (timer && timer.intervalId) {
+        clearInterval(timer.intervalId);
+      }
+      timers = timers.filter(t => t.id !== id);
+      render();
+    }
+
+    function createTimerCell(timer) {
+      if (!timer) {
+        return `<div class="empty">-</div>`;
+      }
+
+      return `
+        <div class="timer-box">
+          ${timer.finished ? `<div class="finished">Finished</div>` : `<div class="time">${formatTime(timer.remaining)}</div>`}
+          <div class="btn-row">
+            <button class="start-btn" onclick="startTimer(${timer.id})">Start</button>
+            <button class="pause-btn" onclick="pauseTimer(${timer.id})">Pause</button>
+            <button class="reset-btn" onclick="resetTimer(${timer.id})">Reset</button>
+            <button class="delete-btn" onclick="deleteTimer(${timer.id})">Delete</button>
+          </div>
+        </div>
+      `;
+    }
+
+    function render() {
+      if (timers.length === 0) {
+        timerRows.innerHTML = `
+          <div class="row">
+            <div class="cell empty">No timers yet</div>
+            <div class="cell empty">-</div>
+            <div class="cell empty">-</div>
+          </div>
+        `;
+        return;
+      }
+
+      timerRows.innerHTML = timers.map(timer => {
+        const leftCell = timer.duration === 10 ? createTimerCell(timer) : createTimerCell(null);
+        const rightCell = timer.duration === 25 ? createTimerCell(timer) : createTimerCell(null);
+
+        return `
+          <div class="row">
+            <div class="cell name-cell">${timer.name}</div>
+            <div class="cell">${leftCell}</div>
+            <div class="cell">${rightCell}</div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    addTimerBtn.addEventListener('click', addTimer);
+
+    timerNameInput.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') {
+        addTimer();
+      }
+    });
+
+    render();
+
+    window.startTimer = startTimer;
+    window.pauseTimer = pauseTimer;
+    window.resetTimer = resetTimer;
+    window.deleteTimer = deleteTimer;
+  </script>
+</body>
+</html>
