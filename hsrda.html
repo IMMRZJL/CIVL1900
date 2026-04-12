@@ -67,7 +67,15 @@
             position: relative; background: #111;
             width: 100%; height: 100%; min-height: 0;
         }
-        #map { width: 100%; height: 100%; z-index: 1; cursor: crosshair; }
+        #map {
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+            cursor: crosshair;
+            /* Provide a fallback dark background so the map area is visibly dark
+               even when no tiles are loaded. */
+            background-color: var(--bg-dark);
+        }
 
         #profile-container {
             grid-column: 2; grid-row: 2;
@@ -88,6 +96,8 @@
         button.danger { background-color: var(--danger); }
         button.info { background-color: #17a2b8; }
         button.toggle-active { background-color: var(--accent); color: #000; font-weight: bold; }
+        /* Ensure secondary buttons adopt the accent colour when toggled */
+        button.secondary.toggle-active { background-color: var(--accent) !important; color: #000 !important; font-weight: bold; }
 
         input, select {
             width: 100%; padding: 5px; background: #444;
@@ -147,6 +157,119 @@
         .cost-detail-item { margin-bottom: 3px; display:flex; justify-content:space-between; }
         .cost-driver { color: #ff8888; font-style: italic; margin-left:5px; text-align: right; }
 
+        /* Popup shown when hovering over problematic segments in Build mode. Provides repair options. */
+        .issue-popup {
+            position: absolute;
+            z-index: 3000;
+            background: rgba(50,50,50,0.95);
+            color: #fff;
+            padding: 8px;
+            border: 1px solid #666;
+            border-radius: 5px;
+            font-size: 0.8em;
+            max-width: 220px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+            pointer-events: auto;
+        }
+        .issue-popup h5 {
+            margin: 0 0 4px 0;
+            font-size: 0.85em;
+            color: var(--accent);
+        }
+        .issue-popup p {
+            margin: 2px 0;
+            font-size: 0.8em;
+        }
+        .issue-popup button {
+            display: block;
+            width: 100%;
+            padding: 4px 6px;
+            margin-top: 4px;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 0.8em;
+            color: #fff;
+            background-color: var(--primary);
+        }
+        .issue-popup button:hover {
+            background-color: #004494;
+        }
+
+        #kml-scale {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            z-index: 1200;
+            display: none;
+            background: rgba(0,0,0,0.82);
+            border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 8px;
+            padding: 10px 12px;
+            color: #fff;
+            min-width: 86px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.35);
+        }
+        #kml-scale .kml-scale-title {
+            font-size: 0.74em;
+            color: #ddd;
+            margin-bottom: 8px;
+            text-align: center;
+        }
+        #kml-scale .kml-scale-wrap {
+            display: flex;
+            align-items: stretch;
+            gap: 8px;
+        }
+        #kml-scale .kml-scale-bar {
+            width: 14px;
+            height: 220px;
+            border-radius: 7px;
+            border: 1px solid rgba(255,255,255,0.25);
+            background: linear-gradient(to top, rgb(34, 66, 190) 0%, rgb(0, 200, 255) 25%, rgb(0, 235, 140) 50%, rgb(255, 225, 0) 75%, rgb(215, 30, 30) 100%);
+        }
+        #kml-scale .kml-scale-labels {
+            position: relative;
+            height: 220px;
+            width: 48px;
+            font-size: 0.72em;
+            color: #f0f0f0;
+        }
+        #kml-scale .kml-scale-tick {
+            position: absolute;
+            right: 0;
+            transform: translateY(50%);
+            white-space: nowrap;
+        }
+        #kml-scale .kml-scale-tick::before {
+            content: '';
+            position: absolute;
+            right: 100%;
+            top: 50%;
+            width: 8px;
+            height: 1px;
+            margin-right: 6px;
+            background: rgba(255,255,255,0.8);
+        }
+
+        /* Custom icon styles for offline markers */
+        .control-marker .control-icon {
+            width: 14px;
+            height: 14px;
+            background: var(--accent);
+            border: 2px solid #fff;
+            border-radius: 50%;
+            box-shadow: 0 0 4px rgba(255,255,255,0.5);
+        }
+        .care-marker .care-icon {
+            color: var(--accent);
+            font-size: 18px;
+            line-height: 18px;
+            text-align: center;
+            display: block;
+            text-shadow: 0 0 2px #fff;
+        }
+
         .preset-btn { background: #444; border: 1px solid #555; padding: 2px 8px; font-size: 0.75em; margin-right: 2px; width: auto; display: inline-block; cursor: pointer; }
         .preset-btn:hover { background: #666; }
 
@@ -166,6 +289,14 @@
             border: 1px solid #555;
         }
         .formula-block { background: #111; padding: 10px; margin: 10px 0; border-radius: 4px; font-family: 'Times New Roman', serif; }
+
+        #help-modal {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.8); z-index: 3000; display: none;
+            justify-content: center; align-items: center;
+        }
+        .help-block { font-size: 0.95em; line-height: 1.5em; color: #ddd; }
+        .help-block p { margin: 0 0 10px 0; }
     </style>
 </head>
 <body>
@@ -196,48 +327,79 @@
         <p><strong>4. Length Penalty (Long Bridges/Tunnels)</strong></p>
         <div class="formula-block">
             $$ ExcessL = \max(0, Length_{structure} - L0) $$
-            $$ M_{len} = e^{(k_{len} \cdot \frac{ExcessL}{1000})} $$
+            $$ M_{len} = 1 + c_{type} \cdot k_{len} \cdot \frac{ExcessL}{1000} \; (capped) $$
         </div>
-        <small>Long continuous structures are exponentially harder to build (Threshold L0).</small>
+        <small>Long continuous structures attract a capped length premium rather than an unbounded exponential penalty (Threshold L0).</small>
 
         <button onclick="document.getElementById('formula-modal').style.display='none'" style="margin-top:15px">Close</button>
+    </div>
+</div>
+
+<div id="help-modal" onclick="this.style.display='none'">
+    <div class="modal-content" onclick="event.stopPropagation()">
+        <h3><i class="fas fa-question-circle"></i> Quick Start Guide</h3>
+        <div class="help-block">
+            <p><strong>1. Plan the route</strong><br>Click on the map to place control points. To protect the public elevation server from overload, each new point is limited to 20 km from the previous selection.</p>
+            <p><strong>2. Build the route</strong><br>Switch to Build mode and paint route sections as normal track, bridge, tunnel, or cut/fill.</p>
+            <p><strong>3. Check the profile</strong><br>Review the elevation profile and warnings. Red sections indicate grade, curvature, or vertical alignment issues.</p>
+            <p><strong>4. Compare costs</strong><br>Use the cost estimator to compare route options and justify your final selection.</p>
+        </div>
+        <button onclick="document.getElementById('help-modal').style.display='none'" style="margin-top:15px">Close</button>
     </div>
 </div>
 
 <div id="app-container">
     <div class="sidebar">
         <h3><i class="fas fa-drafting-compass"></i> Engineering Tools</h3>
+        <button class="info" onclick="document.getElementById('help-modal').style.display='flex'" title="Open the quick start guide." style="margin-top:-5px; font-weight:bold;"><i class="fas fa-question-circle"></i> Help / Quick Start</button>
         
         <div class="panel-section">
             <h4>1. Mode Selection</h4>
             <div style="display:flex; gap:5px;">
-                 <button id="btn-plan-mode" class="toggle-active" onclick="app.setMode('plan')"><i class="fas fa-map-marker-alt"></i> Plan</button>
-                 <button id="btn-build-mode" onclick="app.setMode('build')"><i class="fas fa-hard-hat"></i> Build</button>
+                 <button id="btn-plan-mode" class="toggle-active" onclick="app.setMode('plan')" title="Plan mode: click to add control points; drag to move them."><i class="fas fa-map-marker-alt"></i> Plan</button>
+                 <button id="btn-build-mode" onclick="app.setMode('build')" title="Build mode: paint segments to assign track types."><i class="fas fa-hard-hat"></i> Build</button>
             </div>
-            <button class="danger" onclick="app.clearAll()" style="margin-top:5px; font-size:0.8em; padding:5px;"><i class="fas fa-trash"></i> Clear All Points</button>
+            <button class="danger" onclick="app.clearAll()" style="margin-top:5px; font-size:0.8em; padding:5px;" title="Clear all control points and route."><i class="fas fa-trash"></i> Clear All Points</button>
+            <!-- Undo button to revert last action -->
+            <button class="secondary" onclick="app.undo()" style="margin-top:5px; font-size:0.8em; padding:5px;" title="Undo the last action (up to 10 steps)"><i class="fas fa-undo"></i> Undo</button>
+            <button class="secondary" onclick="app.autoCurveFix()" style="margin-top:5px; font-size:0.8em; padding:5px;" title="Automatically smooth the horizontal route so that large turns better satisfy the selected HSR radius requirement."><i class="fas fa-bezier-curve"></i> Auto Curve Fix</button>
+        <div style="display:flex; gap:5px; margin-top:5px;">
+            <!-- Button to toggle terrain overlay for topographic context -->
+            <!-- Terrain overlay button: highlight when active -->
+            <button class="secondary" id="btn-terrain" onclick="app.toggleTerrain()" title="Toggle a topographic contour overlay on the map for better elevation context."><i class="fas fa-mountain"></i> Terrain</button>
+            <!-- Button to load a local KML contour file. In offline mode you can upload your own KML to overlay contours, restrict actions to the bounding box and work without an internet connection. -->
+            <button class="secondary" id="btn-kml" onclick="app.loadLocalKML()" title="Local KML: switch to offline mode by uploading your own contour file (KML). The map will show the contours, draw a bounding box, and limit interaction to that area. Click again to exit offline mode."><i class="fas fa-file-import"></i> Local KML</button>
+            <input type="file" id="kml-file-input" style="display:none" accept=".kml" onchange="app.handleLocalKML(this)">
+        </div>
             <div class="helper-text" id="mode-desc">
-                Left-Click map to place points. Drag to move. Right-click to delete.
+                Click to add, drag to move, right-click to delete.
             </div>
         </div>
 
         <div class="panel-section" id="build-tools" style="display:none;">
             <h4>2. Construction Type</h4>
-            <button class="build-type-btn active" onclick="app.setBuildTool('normal')" id="tool-normal">
+            <button class="build-type-btn active" onclick="app.setBuildTool('normal')" id="tool-normal" title="Normal track: cheapest option for typical ground conditions.">
                 <i class="fas fa-road" style="color:cyan"></i> Normal Track
             </button>
-            <button class="build-type-btn" onclick="app.setBuildTool('bridge')" id="tool-bridge">
+            <button class="build-type-btn" onclick="app.setBuildTool('bridge')" id="tool-bridge" title="Bridge: spans valleys or water; expensive but avoids curvature penalties.">
                 <i class="fas fa-archway" style="color:orange"></i> Viaduct / Bridge
             </button>
-            <button class="build-type-btn" onclick="app.setBuildTool('tunnel')" id="tool-tunnel">
+            <button class="build-type-btn" onclick="app.setBuildTool('tunnel')" id="tool-tunnel" title="Tunnel: passes through hills or mountains; very costly but eliminates grade and curve issues.">
                 <i class="fas fa-dungeon" style="color:magenta"></i> Tunnel
+            </button>
+
+            <!-- Added cut & fill tool for grading corrections -->
+            <button class="build-type-btn" onclick="app.setBuildTool('cutfill')" id="tool-cutfill" title="Earthworks mode: paint segments for cutting or filling. Segments will automatically be marked as cut (excavation) where the grade is downhill and fill where the grade is uphill. Cheaper than bridges or tunnels.">
+                <i class="fas fa-fill-drip" style="color:yellow"></i> Cut/Fill
             </button>
             
             <div style="margin-top:15px; border-top:1px solid #555; padding-top:10px;">
-                <label style="font-size:0.9em; font-weight:bold; cursor:pointer;"><input type="checkbox" id="chk-range"> Range Fill Mode</label>
+                <label style="font-size:0.9em; font-weight:bold; cursor:pointer;" title="Range fill: click one segment to mark the start, then click another segment to fill the entire span."><input type="checkbox" id="chk-range" onchange="app.handleRangeModeToggle()"> Range Fill Mode</label>
                 <div class="helper-text">
-                    <strong>Paint:</strong> Click and drag on map.<br>
-                    <strong>Fill:</strong> Check box, click start, then click end.
+                    <strong>Paint:</strong> Drag to paint when range mode is off.<br>
+                    <strong>Range Fill:</strong> Click start, then click end.
                 </div>
+                <div class="helper-text" id="range-fill-status" style="display:none;"></div>
             </div>
         </div>
 
@@ -276,13 +438,16 @@
 
         <div class="panel-section">
             <h4>4. Exports & Data</h4>
-            <button class="secondary" onclick="app.downloadCSV()"><i class="fas fa-file-csv"></i> Download CSV</button>
-            <button class="secondary" onclick="app.downloadImages()"><i class="fas fa-image"></i> Download Profile</button>
+            <button class="secondary" onclick="app.downloadCSV()" title="Export profile data as a CSV file."><i class="fas fa-file-csv"></i> Download CSV</button>
+            <!-- Added button to export route as a KML file for offline use -->
+            <button class="secondary" onclick="app.downloadKML()" title="Export the current route as a KML file for offline viewing."><i class="fas fa-file-code"></i> Download KML</button>
+            <button class="secondary" onclick="app.downloadImages()" title="Download the elevation profile chart as an image."><i class="fas fa-image"></i> Download Profile</button>
             <div style="display:flex; gap:5px;">
-                <button class="secondary" onclick="app.saveDesign()"><i class="fas fa-save"></i> Save</button>
-                <button class="secondary" onclick="document.getElementById('file-load').click()"><i class="fas fa-upload"></i> Load</button>
-                <input type="file" id="file-load" style="display:none" onchange="app.loadDesign(this)">
+                <button class="secondary" onclick="app.saveSession()" title="Save the current session, including route, settings, and any loaded local KML overlay."><i class="fas fa-save"></i> Save Session</button>
+                <button class="secondary" onclick="document.getElementById('file-load').click()" title="Load a previously saved session (JSON). Older design JSON files are also supported."><i class="fas fa-upload"></i> Load Session</button>
+                <input type="file" id="file-load" style="display:none" accept=".json,application/json" onchange="app.loadSession(this)">
             </div>
+            <div class="helper-text">Session files restore the route, painted structures, design settings, and local KML contours.</div>
         </div>
     </div>
 
@@ -296,8 +461,11 @@
             <div class="legend-item"><span class="dot" style="background:cyan"></span> Track</div>
             <div class="legend-item"><span class="dot" style="background:orange"></span> Bridge</div>
             <div class="legend-item"><span class="dot" style="background:magenta"></span> Tunnel</div>
+            <div class="legend-item"><span class="dot" style="background:#b97a57"></span> Cut</div>
+            <div class="legend-item"><span class="dot" style="background:#f2df91"></span> Fill</div>
             <div class="legend-item"><span class="dot" style="background:red"></span> Issue</div>
         </div>
+        <div id="kml-scale"></div>
     </div>
 
     <div class="sidebar right-sidebar">
@@ -314,6 +482,7 @@
             <div id="warning-list" style="max-height: 150px; overflow-y: auto;">
                 <div style="color:#aaa; font-style:italic; font-size:0.8em">No critical issues detected.</div>
             </div>
+            <!-- Automated fix buttons removed: instead students will be prompted with options directly on the map when hovering over problematic segments. -->
         </div>
 
         <div class="panel-section">
@@ -329,6 +498,7 @@
             <div class="stat-item"><span>Normal ($/100m):</span> <input type="number" id="rate-normal" value="2500000"></div>
             <div class="stat-item"><span>Bridge ($/100m):</span> <input type="number" id="rate-bridge" value="8500000"></div>
             <div class="stat-item"><span>Tunnel ($/100m):</span> <input type="number" id="rate-tunnel" value="15000000"></div>
+            <div class="stat-item"><span>Cut/Fill ($/100m):</span> <input type="number" id="rate-cutfill" value="500000"></div>
             
             <button class="toggle-btn" onclick="document.getElementById('advanced-cost-params').style.display = document.getElementById('advanced-cost-params').style.display === 'none' ? 'block' : 'none'">
                 <i class="fas fa-cog"></i> Show Advanced Settings
@@ -344,13 +514,13 @@
                 <div style="font-size:0.8em; color:#aaa; margin:5px 0;"><strong>Tunnel Parameters:</strong></div>
                 <div class="param-grid long-label">
                      <div class="param-box"><label>Reference Elevation (m)</label><input type="number" id="e0-limit" value="200" step="50"></div>
-                     <div class="param-box"><label>Penalty Strength (k)</label><input type="number" id="k-len-tun" value="1.0" step="0.1"></div>
-                     <div class="param-box"><label>Length Threshold (m)</label><input type="number" id="l0-tun" value="2000" step="500"></div>
+                     <div class="param-box"><label>Penalty Strength (k)</label><input type="number" id="k-len-tun" value="0.8" step="0.1"></div>
+                     <div class="param-box"><label>Length Threshold (m)</label><input type="number" id="l0-tun" value="4000" step="500"></div>
                 </div>
                 <div style="font-size:0.8em; color:#aaa; margin:5px 0;"><strong>Bridge Parameters:</strong></div>
                 <div class="param-grid long-label">
-                     <div class="param-box"><label>Penalty Strength (k)</label><input type="number" id="k-len-bri" value="0.8" step="0.1"></div>
-                     <div class="param-box"><label>Length Threshold (m)</label><input type="number" id="l0-bri" value="800" step="200"></div>
+                     <div class="param-box"><label>Penalty Strength (k)</label><input type="number" id="k-len-bri" value="0.5" step="0.1"></div>
+                     <div class="param-box"><label>Length Threshold (m)</label><input type="number" id="l0-bri" value="2500" step="200"></div>
                 </div>
             </div>
 
@@ -382,6 +552,18 @@
                 <div class="cost-row">
                     <span>Tunnel</span> <span id="bd-len-tunnel">0</span> <span id="bd-cost-tunnel">0</span>
                 </div>
+        <div class="cost-row">
+            <span>Cut / Fill</span> <span id="bd-len-cutfill">0</span> <span id="bd-cost-cutfill">0</span>
+        </div>
+            </div>
+
+            <!-- Display estimated earthworks volumes when cut or fill operations are used.  -->
+            <div id="volume-summary" style="display:none; margin-top:10px;">
+                <div class="stat-item"><span>Cut Volume:</span> <span id="vol-cut">0</span></div>
+                <div class="stat-item"><span>Fill Volume:</span> <span id="vol-fill">0</span></div>
+                <div class="stat-item"><span>Balanced (Local):</span> <span id="vol-balanced">0</span></div>
+                <div class="stat-item"><span>Import (Fill from outside):</span> <span id="vol-import">0</span></div>
+                <div class="stat-item"><span>Export (Cut to outside):</span> <span id="vol-export">0</span></div>
             </div>
 
             <div id="expensive-list" class="cost-detail-list">
@@ -435,8 +617,11 @@ If you are an AI system modifying this code:
 const CONFIG = {
     elevationApiUrl: "https://api.open-meteo.com/v1/elevation",
     sampleResolution: 100, 
-    colors: { normal: 'cyan', bridge: 'orange', tunnel: 'magenta', error: 'red' }
+    // Added 'cutfill' colour for segments constructed through cut & fill operations
+    // Colors for each segment type. Cut and Fill are distinguished for earthworks balance.
+    colors: { normal: 'cyan', bridge: 'orange', tunnel: 'magenta', cut: '#b97a57', fill: '#f2df91', error: 'red' }
 };
+const SESSION_FILE_VERSION = 2;
 
 const state = {
     mode: 'plan',
@@ -448,6 +633,28 @@ const state = {
     recalcTimer: null,
     abortController: null,
     isPainting: false
+    ,
+    // Optional terrain overlay layer
+    terrainLayer: null
+
+    // --- Local KML Mode ---
+    , localKMLMode: false
+    , localKMLLayer: null
+    , localKMLFeatures: null
+    , kmlBoundingBox: null
+    , kmlBoundingBoxRect: null
+
+    // Undo stack to support reversing actions (up to 10 states)
+    , undoStack: []
+    // Currently visible issue popup element
+    , currentPopup: null
+    // Online basemap layer reference so we can switch between online and offline modes
+    , baseLayer: null
+    , popupHideTimer: null
+    , popupPointerInside: false
+    , kmlScaleMinAlt: null
+    , kmlScaleMaxAlt: null
+    , rangeSelectionAnchor: null
 };
 
 // --- Math ---
@@ -504,21 +711,121 @@ function smoothElevation(elevations) {
     }
     return smoothed;
 }
+function smoothSeries(values, windowSize, passes = 1) {
+    if(!values.length) return [];
+    let out = values.slice();
+    const half = Math.max(1, Math.floor(windowSize / 2));
+    for(let pass = 0; pass < passes; pass++) {
+        const next = new Array(out.length).fill(0);
+        for(let i = 0; i < out.length; i++) {
+            let sum = 0;
+            let count = 0;
+            for(let j = Math.max(0, i - half); j <= Math.min(out.length - 1, i + half); j++) {
+                sum += out[j];
+                count++;
+            }
+            next[i] = sum / Math.max(1, count);
+        }
+        out = next;
+    }
+    return out;
+}
+function projectPointMeters(lat, lng, refLat) {
+    const cosLat = Math.cos(toRad(refLat));
+    return {
+        x: lng * 111320 * cosLat,
+        y: lat * 110574
+    };
+}
+function circumradiusFromLatLng(prev, curr, next) {
+    const refLat = curr.lat;
+    const a = projectPointMeters(prev.lat, prev.lng, refLat);
+    const b = projectPointMeters(curr.lat, curr.lng, refLat);
+    const c = projectPointMeters(next.lat, next.lng, refLat);
+    const area = 0.5 * Math.abs(a.x * (b.y - c.y) + b.x * (c.y - a.y) + c.x * (a.y - b.y));
+    if(area < 1e-6) return Infinity;
+    const dAB = Math.hypot(a.x - b.x, a.y - b.y);
+    const dBC = Math.hypot(b.x - c.x, b.y - c.y);
+    const dCA = Math.hypot(c.x - a.x, c.y - a.y);
+    return (dAB * dBC * dCA) / (4 * area);
+}
 
-// ... (保留原有的 CONFIG, state, Math functions 部分) ...
-// ... (保留 smoothElevation 函数) ...
+function practicalCurveRadiusFromTangents(prev, curr, next) {
+    const refLat = curr.lat;
+    const a = projectPointMeters(prev.lat, prev.lng, refLat);
+    const b = projectPointMeters(curr.lat, curr.lng, refLat);
+    const c = projectPointMeters(next.lat, next.lng, refLat);
+    const vin = { x: b.x - a.x, y: b.y - a.y };
+    const vout = { x: c.x - b.x, y: c.y - b.y };
+    const lenIn = Math.hypot(vin.x, vin.y);
+    const lenOut = Math.hypot(vout.x, vout.y);
+    if(lenIn < 1e-6 || lenOut < 1e-6) return Infinity;
+    const dot = vin.x * vout.x + vin.y * vout.y;
+    const cosTheta = Math.min(1, Math.max(-1, dot / (lenIn * lenOut)));
+    const theta = Math.acos(cosTheta);
+    if(theta < 1e-4) return Infinity;
+    const simpleRadius = Math.min(lenIn, lenOut) / Math.max(1e-6, Math.tan(theta / 2));
+    const transitionAllowanceFactor = 0.85;
+    return simpleRadius * transitionAllowanceFactor;
+}
+function effectiveHorizontalRadius(prev, curr, next) {
+    return Math.min(
+        circumradiusFromLatLng(prev, curr, next),
+        practicalCurveRadiusFromTangents(prev, curr, next)
+    );
+}
+function interpolateNumber(a, b, t) {
+    return a + (b - a) * t;
+}
+function smoothStep01(t) {
+    const x = Math.max(0, Math.min(1, t));
+    return x * x * (3 - 2 * x);
+}
+function curveCostMultiplier(type, radius, requiredRadius, kCurve, sensitivity) {
+    if(!(radius > 0) || radius === Infinity) return 1;
+    const tightness = Math.max(0, (requiredRadius / radius) - 1);
+    if(tightness <= 0) return 1;
+    const boundedTightness = Math.min(2.2, tightness);
+    const raw = Math.exp(kCurve * sensitivity * boundedTightness);
+    const caps = { normal: 6.0, bridge: 3.2, tunnel: 2.2, cut: 4.0, fill: 4.0, cutfill: 4.0 };
+    return Math.min(caps[type] || 4.0, raw);
+}
+function getContourColor(ratio) {
+    const stops = [
+        { stop: 0.0, rgb: [34, 66, 190] },
+        { stop: 0.25, rgb: [0, 200, 255] },
+        { stop: 0.5, rgb: [0, 235, 140] },
+        { stop: 0.75, rgb: [255, 225, 0] },
+        { stop: 1.0, rgb: [215, 30, 30] }
+    ];
+    const t = Math.min(1, Math.max(0, ratio));
+    for(let i = 0; i < stops.length - 1; i++) {
+        const left = stops[i];
+        const right = stops[i + 1];
+        if(t >= left.stop && t <= right.stop) {
+            const local = (t - left.stop) / Math.max(1e-6, right.stop - left.stop);
+            const rgb = left.rgb.map((value, idx) => Math.round(interpolateNumber(value, right.rgb[idx], local)));
+            return `rgb(${rgb[0]}, ${rgb[1]}, ${rgb[2]})`;
+        }
+    }
+    const fallback = stops[stops.length - 1].rgb;
+    return `rgb(${fallback[0]}, ${fallback[1]}, ${fallback[2]})`;
+}
+
+// Keep the original CONFIG, state and Math functions
+// Keep the smoothElevation function
 
 // ==========================================
-// NEW: Global Request Manager (总把控)
+// NEW: Global Request Manager
 // ==========================================
 const requestManager = {
     queue: [],
     isProcessing: false,
     lastRequestTime: 0,
-    minInterval: 1000, // 两次请求至少间隔 1000ms (1秒)
+    minInterval: 1000, // minimum interval between requests: 1000ms (1 second)
 
     add: function(tasks) {
-        // tasks 是一个数组，包含多个 fetch 任务
+        // tasks is an array containing multiple fetch operations
         this.queue.push(...tasks);
         this.process();
     },
@@ -533,17 +840,17 @@ const requestManager = {
         this.isProcessing = true;
 
         while (this.queue.length > 0) {
-            // 1. 检查冷却时间，不够就等
+            // 1. Check the cooldown time; wait if necessary
             const now = Date.now();
             const timeSinceLast = now - this.lastRequestTime;
             if (timeSinceLast < this.minInterval) {
                 await wait(this.minInterval - timeSinceLast);
             }
 
-            // 2. 取出任务执行 (如果由于用户取消操作导致 signal 废弃，则跳过)
+            // 2. Retrieve and execute a task (skip if the signal has been aborted)
             const task = this.queue.shift();
             if (task.signal && task.signal.aborted) {
-                continue; // 任务已取消，直接跳过
+                continue; // Task has been cancelled; skip it
             }
 
             try {
@@ -554,15 +861,15 @@ const requestManager = {
             
             this.lastRequestTime = Date.now();
             
-            // 更新进度条 UI (根据剩余队列长度估算)
+            // Update the progress bar UI (based on the remaining queue length)
             const loadingFill = document.getElementById('loading-bar-fill');
             if(loadingFill && this.queue.length > 0) {
-                 // 简单的视觉反馈，让它动起来
+                 // Provide simple visual feedback so it appears animated
                  loadingFill.style.width = "80%"; 
             }
         }
 
-        // 全部完成
+        // All tasks completed
         this.isProcessing = false;
         document.getElementById('loading-container').style.display = 'none';
         document.getElementById('loading-bar-fill').style.width = "0%";
@@ -573,15 +880,55 @@ const app = {
     map: null,
     
     init: function() {
-        // ... (保持原有的 init 代码不变) ...
+        // initialization logic
         this.map = L.map('map').setView([-34.1, 150.95], 10);
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-            attribution: '©OpenStreetMap, ©CartoDB'
-        }).addTo(this.map);
+
+        // Define custom marker icons for offline mode. Leaflet's default icon
+        // uses external PNG assets which will fail to load without network
+        // access. These DivIcons draw simple shapes directly with CSS. The
+        // controlIcon is a small coloured circle and the careIcon displays a
+        // star character.
+        this.controlIcon = L.divIcon({
+            className: 'control-marker',
+            html: '<div class="control-icon"></div>',
+            iconSize: [14, 14],
+            iconAnchor: [7, 7]
+        });
+        this.careIcon = L.divIcon({
+            className: 'care-marker',
+            html: '<div class="care-icon">&#9733;</div>',
+            iconSize: [20, 20],
+            iconAnchor: [10, 10]
+        });
+        // Default to online mode: load the dark basemap tiles immediately on startup.
+        // Offline mode is only entered when the user explicitly loads a local KML.
+        state.baseLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+            attribution: '&copy; OpenStreetMap &copy; CARTO',
+            subdomains: 'abcd',
+            maxZoom: 20
+        });
+        state.baseLayer.on('tileerror', () => {
+            const mapEl = document.getElementById('map');
+            if (mapEl && !document.getElementById('map-load-warning')) {
+                const warn = document.createElement('div');
+                warn.id = 'map-load-warning';
+                warn.style.position = 'absolute';
+                warn.style.top = '12px';
+                warn.style.left = '12px';
+                warn.style.zIndex = '1200';
+                warn.style.background = 'rgba(0,0,0,0.8)';
+                warn.style.color = '#fff';
+                warn.style.padding = '8px 10px';
+                warn.style.borderRadius = '6px';
+                warn.innerText = 'Online basemap tiles failed to load.';
+                mapEl.parentElement.appendChild(warn);
+            }
+        });
+        state.baseLayer.addTo(this.map);
         setTimeout(() => { this.map.invalidateSize(); }, 200);
 
         this.map.on('mousedown', () => { 
-            if(state.mode === 'build') {
+            if(state.mode === 'build' && !this.isRangeModeActive()) {
                 state.isPainting = true;
                 this.map.dragging.disable();
             }
@@ -590,15 +937,48 @@ const app = {
             state.isPainting = false;
             this.map.dragging.enable();
         });
+        document.addEventListener('keydown', (e) => {
+            if(e.key === 'Escape' && state.rangeSelectionAnchor !== null && state.rangeSelectionAnchor !== undefined) {
+                state.rangeSelectionAnchor = null;
+                this.renderMapSegments();
+                return;
+            }
+            const activeTag = document.activeElement && document.activeElement.tagName ? document.activeElement.tagName.toLowerCase() : '';
+            if(['input', 'textarea', 'select'].includes(activeTag)) return;
+            if(!state.currentPopup) return;
+            const key = e.key.toLowerCase();
+            const segIndex = parseInt(state.currentPopup.dataset.segIndex || '-1');
+            if(segIndex < 0) return;
+            const keyMap = { f: 'fill', c: 'cut', t: 'tunnel', b: 'bridge' };
+            const selectedType = keyMap[key];
+            if(selectedType) {
+                const button = Array.from(state.currentPopup.querySelectorAll('button')).find(btn => btn.textContent.toLowerCase().includes(selectedType));
+                if(button) {
+                    e.preventDefault();
+                    this.applyFixChoice(segIndex, selectedType);
+                }
+            }
+        });
         
         this.map.on('click', (e) => {
-            if (state.mode === 'plan') this.addControlPoint(e.latlng);
+            // In local KML mode restrict clicks to the bounding box
+            if(state.localKMLMode && state.kmlBoundingBox) {
+                const sw = state.kmlBoundingBox[0];
+                const ne = state.kmlBoundingBox[1];
+                const lat = e.latlng.lat;
+                const lng = e.latlng.lng;
+                if(lat < sw[0] || lat > ne[0] || lng < sw[1] || lng > ne[1]) {
+                    alert('This point lies outside the loaded contour area. Switch to online mode or select within the bounding box.');
+                    return;
+                }
+            }
+            if (state.mode === 'plan') this.addControlPointFromSelection(e.latlng);
         });
 
-        // Chart Initialization (保持不变)
+        // Chart Initialization
         const ctx = document.getElementById('profileChart').getContext('2d');
         state.chartInstance = new Chart(ctx, {
-            // ... (复制你原来的 chart 配置) ...
+            // original chart configuration
             type: 'line',
             data: {
                 datasets: [{
@@ -643,7 +1023,7 @@ const app = {
                 onClick: (e, elements) => {
                     if(state.mode === 'build' && elements.length > 0) {
                         const idx = elements[0].index;
-                        this.applyBuildTool(idx, e.native.shiftKey);
+                        this.handleBuildSegmentSelection(idx);
                     }
                 }
             }
@@ -653,15 +1033,17 @@ const app = {
     },
 
     setMode: function(mode) {
-        // ... (保持不变) ...
+        // set mode and update the interface
         state.mode = mode;
+        state.rangeSelectionAnchor = null;
         document.getElementById('btn-plan-mode').className = mode === 'plan' ? 'toggle-active' : '';
         document.getElementById('btn-build-mode').className = mode === 'build' ? 'toggle-active' : '';
         document.getElementById('build-tools').style.display = mode === 'build' ? 'block' : 'none';
         
-        document.getElementById('mode-desc').innerText = mode === 'plan' 
-            ? "Left-Click map to place points. Drag to move. Right-click to delete."
-            : "Click and Drag on map to Paint segments.";
+        // Provide concise, user‑friendly instructions without technical pointer terms
+        document.getElementById('mode-desc').innerText = mode === 'plan'
+            ? "Click to add, drag to move, right-click to delete."
+            : "Drag to paint, or use Range Fill to click a start segment and an end segment.";
 
         state.controlPoints.forEach(m => {
             if(m.dragging) mode === 'plan' ? m.dragging.enable() : m.dragging.disable();
@@ -671,13 +1053,129 @@ const app = {
 
     setBuildTool: function(tool) {
         state.buildTool = tool;
+        state.rangeSelectionAnchor = null;
         document.querySelectorAll('.build-type-btn').forEach(b => b.classList.remove('active'));
         document.getElementById(`tool-${tool}`).classList.add('active');
+        this.updateRangeFillStatus();
+        if(state.mode === 'build') this.renderMapSegments();
+    },
+    isRangeModeActive: function() {
+        const checkbox = document.getElementById('chk-range');
+        return !!(checkbox && checkbox.checked);
+    },
+    updateRangeFillStatus: function() {
+        const status = document.getElementById('range-fill-status');
+        if(!status) return;
+        const active = state.mode === 'build' && this.isRangeModeActive();
+        status.style.display = active ? 'block' : 'none';
+        if(!active) {
+            status.textContent = '';
+            status.style.color = '';
+            status.style.fontWeight = '';
+            return;
+        }
+        if(state.rangeSelectionAnchor === null || state.rangeSelectionAnchor === undefined) {
+            status.textContent = 'Range fill is ready: click the first segment, then click the last segment.';
+            status.style.color = '#aaa';
+            status.style.fontWeight = 'normal';
+            return;
+        }
+        const toolLabels = {
+            normal: 'normal track',
+            bridge: 'bridge',
+            tunnel: 'tunnel',
+            cutfill: 'cut/fill'
+        };
+        status.textContent = `Start selected. Click the end segment to fill the range with ${toolLabels[state.buildTool] || state.buildTool}. Press Esc to cancel.`;
+        status.style.color = '#ffc107';
+        status.style.fontWeight = 'bold';
+    },
+    handleRangeModeToggle: function() {
+        if(!this.isRangeModeActive()) {
+            state.rangeSelectionAnchor = null;
+        }
+        this.updateRangeFillStatus();
+        if(state.mode === 'build') this.renderMapSegments();
+    },
+    paintSegmentRange: function(startIndex, endIndex, suppressSave = false) {
+        if(state.mode !== 'build' || !state.segments.length) return false;
+        const maxIndex = state.segments.length - 1;
+        const start = Math.max(0, Math.min(startIndex, endIndex, maxIndex));
+        const end = Math.min(maxIndex, Math.max(startIndex, endIndex));
+        if(!suppressSave) {
+            this.saveState();
+        }
+        const targetType = state.buildTool;
+        const verticalDesign = this.computeVerticalDesign();
+        const determineCutFill = (segIndex) => {
+            const recommended = verticalDesign.verticalRecommendations && verticalDesign.verticalRecommendations[segIndex];
+            if(recommended === 'cut' || recommended === 'fill') return recommended;
+            const offset = verticalDesign.avgOffsets && typeof verticalDesign.avgOffsets[segIndex] === 'number' ? verticalDesign.avgOffsets[segIndex] : 0;
+            return offset >= 0 ? 'fill' : 'cut';
+        };
+        for(let i = start; i <= end; i++) {
+            if(!state.segments[i]) continue;
+            state.segments[i].type = targetType === 'cutfill' ? determineCutFill(i) : targetType;
+        }
+        this.updateParams();
+        return true;
+    },
+    handleBuildSegmentSelection: function(index) {
+        if(state.mode !== 'build' || !state.segments[index]) return false;
+        if(!this.isRangeModeActive()) {
+            state.rangeSelectionAnchor = null;
+            return this.paintSegmentRange(index, index);
+        }
+        if(state.rangeSelectionAnchor === null || state.rangeSelectionAnchor === undefined) {
+            state.rangeSelectionAnchor = index;
+            this.renderMapSegments();
+            return false;
+        }
+        const anchor = state.rangeSelectionAnchor;
+        state.rangeSelectionAnchor = null;
+        return this.paintSegmentRange(anchor, index);
+    },
+
+    limitPointDistance: function(fromLatLng, toLatLng, maxMeters = 20000) {
+        const dist = getDistance(fromLatLng.lat, fromLatLng.lng, toLatLng.lat, toLatLng.lng);
+        if(dist <= maxMeters) return { latlng: toLatLng, adjusted: false, distance: dist };
+        const ratio = maxMeters / dist;
+        const lat = fromLatLng.lat + (toLatLng.lat - fromLatLng.lat) * ratio;
+        const lng = fromLatLng.lng + (toLatLng.lng - fromLatLng.lng) * ratio;
+        return { latlng: L.latLng(lat, lng), adjusted: true, distance: dist };
+    },
+
+    addControlPointFromSelection: function(latlng) {
+        let finalLatLng = latlng;
+        if(state.controlPoints.length > 0) {
+            const lastLatLng = state.controlPoints[state.controlPoints.length - 1].getLatLng();
+            const capped = this.limitPointDistance(lastLatLng, latlng, 20000);
+            finalLatLng = capped.latlng;
+            if(capped.adjusted) {
+                alert('To avoid being blocked by the public elevation server, only 20 km is allowed as the maximum per selection. The new point has been adjusted automatically to 20 km from the previous point.');
+            }
+        }
+        this.addControlPoint(finalLatLng);
     },
 
     addControlPoint: function(latlng, index = null) {
-        const marker = L.marker(latlng, { draggable: true }).addTo(this.map);
-        marker.on('dragend', () => this.scheduleRecalc());
+        // Save the current state for undo unless specifically suppressed (e.g., during automatic splitting or file loading)
+        if (!arguments[2]) {
+            this.saveState();
+        }
+        const marker = L.marker(latlng, { draggable: true, icon: this.controlIcon }).addTo(this.map);
+        marker.on('dragend', () => {
+            const idx = state.controlPoints.indexOf(marker);
+            if(idx > 0) {
+                const prev = state.controlPoints[idx - 1].getLatLng();
+                const capped = this.limitPointDistance(prev, marker.getLatLng(), 20000);
+                if(capped.adjusted) {
+                    marker.setLatLng(capped.latlng);
+                    alert('To avoid being blocked by the public elevation server, adjacent control points are limited to 20 km. The moved point has been adjusted automatically.');
+                }
+            }
+            this.scheduleRecalc();
+        });
         marker.on('contextmenu', () => {
             if(state.mode === 'plan') {
                 this.map.removeLayer(marker);
@@ -696,25 +1194,25 @@ const app = {
 
     // NEW: Auto-split long segments
     insertIntermediatePoints: function() {
-        const MAX_DIST_METERS = 10000; // 严格按照你的逻辑：10km阈值
+        const MAX_DIST_METERS = 10000; // strictly follow the 10 km threshold
         let pointsAdded = false;
 
-        // 遍历所有点，检查间距
+        // Iterate through all points and check the distance between consecutive points
         for (let i = 0; i < state.controlPoints.length - 1; i++) {
             const p1 = state.controlPoints[i].getLatLng();
             const p2 = state.controlPoints[i+1].getLatLng();
             const dist = getDistance(p1.lat, p1.lng, p2.lat, p2.lng);
 
             if (dist > MAX_DIST_METERS) {
-                // 发现超长距离，取中点
+                // For overly long distances, insert a midpoint
                 const midLat = (p1.lat + p2.lat) / 2;
                 const midLng = (p1.lng + p2.lng) / 2;
                 
-                // 在 i+1 的位置插入一个新点（这会自动触发 scheduleRecalc 排队下一次计算）
-                this.addControlPoint([midLat, midLng], i + 1);
+                // Insert the new point at position i+1. Passing skipSave=true prevents polluting the undo stack.
+                this.addControlPoint([midLat, midLng], i + 1, true);
                 
                 pointsAdded = true;
-                // 一次循环只加一批点，然后跳出，让视觉先更新，防止浏览器卡死
+                // Add only one point per iteration then break to allow the UI to update and prevent browser freeze
                 break; 
             }
         }
@@ -723,7 +1221,10 @@ const app = {
 
     clearAll: function() {
         if(!confirm("Clear all points and start over?")) return;
+        // Save current state before clearing to allow undo
+        this.saveState();
         requestManager.clear(); // Clear pending API calls
+        state.rangeSelectionAnchor = null;
         state.controlPoints.forEach(m => this.map.removeLayer(m));
         state.controlPoints = [];
         state.segments = [];
@@ -734,6 +1235,7 @@ const app = {
         state.chartInstance.update();
         
         this.updateStats();
+        this.updateRangeFillStatus();
     },
 
     scheduleRecalc: function() {
@@ -747,9 +1249,9 @@ const app = {
         state.recalcTimer = setTimeout(() => this.recalculateRoute(), 500);
     },
 
-   // 2. 修改后的主计算逻辑：如果加了点，立刻画线，不留空白
+   // 2. Modified main calculation: draw the line immediately when points are added
     recalculateRoute: async function() {
-        // 如果点太少，清空
+        // If there are too few points, clear the route
         if (state.controlPoints.length < 2) {
             state.segments = [];
             if(state.routeLayer) state.routeLayer.clearLayers();
@@ -758,40 +1260,40 @@ const app = {
             return;
         }
 
-        // --- 核心逻辑修正 ---
-        // 1. 先检查是否需要分段
+        // --- Core logic corrections ---
+        // 1. Check if resampling is needed (auto-insert intermediate points)
         const geometryChanged = this.insertIntermediatePoints();
 
-        // 2. 如果因为距离太远插入了新点（geometryChanged 为 true）
+        // 2. If a new point was inserted due to long distance (geometryChanged === true)
         if (geometryChanged) {
-            // 【关键修改】不要直接 return！先立刻把线画出来！
-            // 哪怕没有海拔数据，也要先让用户看到点和点是用线连着的。
+            // Important: do not return immediately! Render the line right away
+            // Even without elevation data, the user should see points connected by a line.
             
             const latlngs = state.controlPoints.map(m => m.getLatLng());
-            // 仅根据几何形状生成线段
+            // Generate segments based solely on geometry
             const rawSegments = resamplePolyline(latlngs, CONFIG.sampleResolution);
             
-            // 填充临时数据，确保 renderMapSegments 能工作
+            // Populate temporary data to ensure renderMapSegments works
             state.segments = rawSegments.map(s => ({
                 ...s, 
-                elev: 0, // 临时海拔
+                elev: 0, // temporary elevation placeholder
                 grade: 0, 
                 radius: Infinity, 
                 type: 'normal'
             }));
             
-            // 立刻渲染：连接所有点！不再有孤岛！
+            // Render immediately: connect all points; no isolated segments
             this.renderMapSegments();
-            this.updateStats(); // 更新长度显示
+            this.updateStats(); // update length display
             
-            // 更新提示文字
+            // Update the loading text
             const loadingText = document.getElementById('loading-text');
             if(loadingText) {
                 document.getElementById('loading-container').style.display = 'block';
                 loadingText.innerHTML = '<i class="fas fa-ruler-combined"></i> Auto-splitting long segment...';
             }
 
-            // 现在可以退出了，等待 scheduleRecalc 触发的下一次递归（去处理更细的分段或请求数据）
+            // Exit now and wait for scheduleRecalc to trigger the next recursion to handle finer splitting or data requests
             return; 
         }
         // -------------------
@@ -799,7 +1301,7 @@ const app = {
         state.abortController = new AbortController();
         const signal = state.abortController.signal;
         
-        // UI 更新：开始请求数据
+        // Update the UI: begin requesting elevation data
         const loadingContainer = document.getElementById('loading-container');
         const loadingText = document.getElementById('loading-text');
         if(loadingText) loadingText.innerHTML = '<i class="fas fa-satellite-dish"></i> Syncing Elevation...';
@@ -849,7 +1351,7 @@ const app = {
             requestManager.add(tasks);
         } else {
             this.processDataAndRender(rawSegments);
-            // 数据加载完，隐藏加载框
+            // Once data has loaded, hide the loading box
             loadingContainer.style.display = 'none';
         }
     },
@@ -874,52 +1376,58 @@ const app = {
         this.updateParams();
     },
 
-    // ... (保留 calcDerivatives, applyBuildTool, renderMapSegments 等后续代码) ...
+    // ... preserve calcDerivatives, applyBuildTool, renderMapSegments and subsequent functions ...
     calcDerivatives: function() {
         const segs = state.segments;
-        // ... (保持原代码内容) ...
+        const controlLatLngs = state.controlPoints.map(m => m.getLatLng ? m.getLatLng() : m);
+        const controlDists = [0];
+        for(let i = 1; i < controlLatLngs.length; i++) {
+            controlDists.push(controlDists[i - 1] + getDistance(
+                controlLatLngs[i - 1].lat, controlLatLngs[i - 1].lng,
+                controlLatLngs[i].lat, controlLatLngs[i].lng
+            ));
+        }
+        const vertexData = [];
+        for(let i = 1; i < controlLatLngs.length - 1; i++) {
+            const lenIn = Math.max(1, controlDists[i] - controlDists[i - 1]);
+            const lenOut = Math.max(1, controlDists[i + 1] - controlDists[i]);
+            vertexData.push({
+                controlIndex: i,
+                dist: controlDists[i],
+                radius: effectiveHorizontalRadius(controlLatLngs[i - 1], controlLatLngs[i], controlLatLngs[i + 1]),
+                influence: Math.max(CONFIG.sampleResolution * 2.0, Math.min(Math.min(lenIn, lenOut) * 0.35, 900))
+            });
+        }
+
         for (let i = 0; i < segs.length; i++) {
             if (i > 0) {
                 const distDiff = segs[i].dist - segs[i-1].dist;
                 const elevDiff = segs[i].elev - segs[i-1].elev;
                 segs[i].grade = distDiff > 0 ? (elevDiff / distDiff) * 100 : 0;
-            } else { segs[i].grade = 0; }
+            } else {
+                segs[i].grade = 0;
+            }
 
-            if (i > 0 && i < segs.length - 1) {
-                const p1 = segs[i-1]; const p2 = segs[i]; const p3 = segs[i+1];
-                const cosLat = Math.cos(toRad(p2.lat));
-                const ky = 110574; const kx = 111320 * cosLat;
-                const x1 = p1.lng * kx, y1 = p1.lat * ky;
-                const x2 = p2.lng * kx, y2 = p2.lat * ky;
-                const x3 = p3.lng * kx, y3 = p3.lat * ky;
-                const area = 0.5 * Math.abs(x1*(y2-y3) + x2*(y3-y1) + x3*(y1-y2));
-                const d12 = Math.sqrt((x1-x2)**2 + (y1-y2)**2);
-                const d23 = Math.sqrt((x2-x3)**2 + (y2-y3)**2);
-                const d31 = Math.sqrt((x3-x1)**2 + (y3-y1)**2);
-                if (area === 0) segs[i].radius = Infinity;
-                else segs[i].radius = (d12 * d23 * d31) / (4 * area);
-            } else { segs[i].radius = Infinity; }
-            
+            let nearestVertex = null;
+            for(const vertex of vertexData) {
+                const delta = Math.abs(segs[i].dist - vertex.dist);
+                if(delta <= vertex.influence) {
+                    if(!nearestVertex || delta < nearestVertex.delta) {
+                        nearestVertex = { delta, radius: vertex.radius, controlIndex: vertex.controlIndex };
+                    }
+                }
+            }
+            segs[i].radius = nearestVertex ? nearestVertex.radius : Infinity;
+            segs[i].controlVertexIndex = nearestVertex ? nearestVertex.controlIndex : -1;
+
             if(i < segs.length-1) segs[i].length_m = segs[i+1].dist - segs[i].dist;
-            else segs[i].length_m = 0; 
+            else segs[i].length_m = 0;
         }
     },
     
-    // ... (以下所有函数如 applyBuildTool, renderMapSegments, updateCost 等保持不变) ...
-    applyBuildTool: function(index, isShift) {
-        if (state.mode !== 'build') return;
-        const targetType = state.buildTool;
-        const isRangeCheck = document.getElementById('chk-range').checked || isShift;
-        if (isRangeCheck && state.lastClickedIndex !== undefined) {
-            const start = Math.min(state.lastClickedIndex, index);
-            const end = Math.max(state.lastClickedIndex, index);
-            for(let i=start; i<=end; i++) state.segments[i].type = targetType;
-            state.lastClickedIndex = index;
-        } else {
-            state.segments[index].type = targetType;
-            state.lastClickedIndex = index;
-        }
-        this.updateParams(); 
+    // Single-segment paint used by drag-paint mode when range fill is off.
+    applyBuildTool: function(index, suppressSave = false) {
+        return this.paintSegmentRange(index, index, suppressSave);
     },
 
     renderMapSegments: function() {
@@ -930,93 +1438,413 @@ const app = {
             const latlngs = state.segments.map(s => [s.lat, s.lng]);
             L.polyline(latlngs, { color: '#0056b3', weight: 4 }).addTo(state.routeLayer);
         } else {
-            const speed = parseInt(document.getElementById('design-speed').value);
-            const R_min = (speed * speed) / 22; 
-            const limits = {
-                normal: parseFloat(document.getElementById('grade-normal').value),
-                bridge: parseFloat(document.getElementById('grade-bridge').value),
-                tunnel: parseFloat(document.getElementById('grade-tunnel').value)
-            };
-
+            const verticalDesign = this.computeVerticalDesign();
             for (let i = 0; i < state.segments.length - 1; i++) {
                 const s1 = state.segments[i];
                 const s2 = state.segments[i+1];
                 let strokeColor = CONFIG.colors[s1.type || 'normal'];
-                
-                // Red if tight curve OR steep grade (unless tunnel)
-                let isTurnIssue = s1.radius < R_min;
-                let isGradeIssue = Math.abs(s1.grade) > limits[s1.type];
-                if (s1.type === 'tunnel') isGradeIssue = false; // Ignore grade for map color on tunnels
 
-                if (isTurnIssue || isGradeIssue) strokeColor = CONFIG.colors.error;
+                const isTurnIssue = !!verticalDesign.unresolvedCurve[i];
+                const isGradeIssue = !!verticalDesign.unresolvedGrade[i];
+                const isVerticalIssue = !!verticalDesign.unresolvedVertical[i];
+                const isEnvIssue = ((s1.type === 'cut' || s1.type === 'fill' || s1.type === 'cutfill') && s1.elev <= 1);
+                const hasUserSelectedStructure = ['bridge', 'tunnel', 'cut', 'fill', 'cutfill'].includes(s1.type || '');
+
+                // Keep red for genuine unresolved geometry or water issues. For vertical issues,
+                // once the user has explicitly painted a structure or earthwork type, keep the
+                // selected colour visible and let the warning/popup explain whether that choice
+                // is still suboptimal. This avoids the confusing behaviour where selecting
+                // cut/fill appears to have no visual effect.
+                if (isTurnIssue || isGradeIssue || isEnvIssue || (isVerticalIssue && !hasUserSelectedStructure)) {
+                    strokeColor = CONFIG.colors.error;
+                }
+                const isRangeStart = this.isRangeModeActive() && state.rangeSelectionAnchor === i;
+                const baseColor = isRangeStart ? '#ffc107' : strokeColor;
+                const baseWeight = isRangeStart ? 8 : 6;
+                const baseOpacity = isRangeStart ? 1 : 0.8;
+                const baseDashArray = isRangeStart ? '10,6' : null;
 
                 const segLine = L.polyline([[s1.lat, s1.lng], [s2.lat, s2.lng]], {
-                    color: strokeColor, weight: 6, opacity: 0.8, className: 'segment-line'
+                    color: baseColor, weight: baseWeight, opacity: baseOpacity, dashArray: baseDashArray, className: 'segment-line'
                 }).addTo(state.routeLayer);
-                
+
                 segLine.on('mouseover', (e) => {
-                    if(state.isPainting) this.applyBuildTool(i, false);
+                    const rangeModeActive = state.mode === 'build' && this.isRangeModeActive();
+                    if(!rangeModeActive && state.isPainting) {
+                        this.applyBuildTool(i, true);
+                    }
                     e.target.setStyle({ weight: 10, color: 'white' });
                     state.chartInstance.setActiveElements([{ datasetIndex: 0, index: i }]);
                     state.chartInstance.update();
+                    if(!rangeModeActive && (isTurnIssue || isGradeIssue || isVerticalIssue || isEnvIssue)) {
+                        this.showIssuePopup(i, e);
+                    }
                 });
                 segLine.on('mousedown', () => {
+                   if(this.isRangeModeActive()) return;
                    state.isPainting = true;
                    this.map.dragging.disable();
-                   this.applyBuildTool(i, false);
+                   this.applyBuildTool(i, true);
                 });
                 segLine.on('mouseout', (e) => {
-                    e.target.setStyle({ weight: 6, color: strokeColor });
+                    e.target.setStyle({ weight: baseWeight, color: baseColor, opacity: baseOpacity, dashArray: baseDashArray });
                     state.chartInstance.setActiveElements([]);
                     state.chartInstance.update();
+                    this.hideIssuePopupSoon();
                 });
-                segLine.on('click', (e) => this.applyBuildTool(i, e.originalEvent.shiftKey));
+                segLine.on('click', () => {
+                    const changed = this.handleBuildSegmentSelection(i);
+                    if(changed && state.mode === 'build') {
+                        this.scrollToWarning(i);
+                    }
+                });
             }
         }
+        this.updateRangeFillStatus();
     },
-    
+
+    computeVerticalDesign: function() {
+        const segs = state.segments;
+        const n = segs.length;
+        if(!n) return {
+            trackElevs: [], trackGrades: [], unresolved: [], unresolvedGrade: [], unresolvedCurve: [], unresolvedVertical: [],
+            verticalRecommendations: [], verticalMessages: [], offsetAtSamples: [], avgOffsets: []
+        };
+
+        const ground = segs.map(s => s.elev || 0);
+        const distances = segs.map(s => s.dist || 0);
+        const totalLength = Math.max(1, distances[n - 1] - distances[0]);
+        const e0 = parseFloat(document.getElementById('e0-limit').value);
+        const smoothingWindow = Math.max(11, Math.min(51, Math.floor(n / 10) * 2 + 11));
+        const smoothGround = smoothSeries(ground, smoothingWindow, 2);
+        const globalLine = ground.map((_, idx) => ground[0] + (ground[n - 1] - ground[0]) * ((distances[idx] - distances[0]) / totalLength));
+        let target = smoothGround.map((value, idx) => value * 0.60 + globalLine[idx] * 0.40);
+        const endpointBlendLength = Math.max(500, Math.min(2000, totalLength * 0.10));
+        for(let idx = 0; idx < n; idx++) {
+            const fromStart = distances[idx] - distances[0];
+            if(fromStart < endpointBlendLength) {
+                const w = Math.pow(1 - fromStart / endpointBlendLength, 2);
+                target[idx] = target[idx] * (1 - w) + ground[0] * w;
+            }
+            const toEnd = distances[n - 1] - distances[idx];
+            if(toEnd < endpointBlendLength) {
+                const w = Math.pow(1 - toEnd / endpointBlendLength, 2);
+                target[idx] = target[idx] * (1 - w) + ground[n - 1] * w;
+            }
+        }
+
+        let groupStart = 0;
+        while(groupStart < n - 1) {
+            const type = segs[groupStart].type || 'normal';
+            let groupEnd = groupStart;
+            while(groupEnd < n - 2 && (segs[groupEnd + 1].type || 'normal') === type) groupEnd++;
+            if(type !== 'normal') {
+                const anchorStart = Math.max(0, groupStart - 2);
+                const anchorEnd = Math.min(n - 1, groupEnd + 2);
+                const span = Math.max(1, distances[anchorEnd] - distances[anchorStart]);
+                const y0 = target[anchorStart];
+                const y1 = target[anchorEnd];
+                const blend = type === 'tunnel'
+                    ? 0.98
+                    : (type === 'bridge'
+                        ? 0.95
+                        : ((type === 'cut' || type === 'fill' || type === 'cutfill') ? 0.88 : 0.78));
+                for(let i = anchorStart; i <= anchorEnd; i++) {
+                    const ratio = (distances[i] - distances[anchorStart]) / span;
+                    const linear = y0 + (y1 - y0) * ratio;
+                    target[i] = target[i] * (1 - blend) + linear * blend;
+                }
+            }
+            groupStart = groupEnd + 1;
+        }
+
+        const limitLookup = {
+            normal: parseFloat(document.getElementById('grade-normal').value),
+            bridge: parseFloat(document.getElementById('grade-bridge').value),
+            tunnel: parseFloat(document.getElementById('grade-tunnel').value),
+            cut: parseFloat(document.getElementById('grade-normal').value),
+            fill: parseFloat(document.getElementById('grade-normal').value),
+            cutfill: parseFloat(document.getElementById('grade-normal').value)
+        };
+        const getLimit = (segType) => limitLookup[segType] || limitLookup.normal;
+
+        let design = target.slice();
+        design[0] = ground[0];
+        design[n - 1] = ground[n - 1];
+
+        for(let iter = 0; iter < 28; iter++) {
+            for(let i = 1; i < n; i++) {
+                const span = Math.max(1, distances[i] - distances[i - 1]);
+                const segType = segs[Math.max(0, i - 1)].type || 'normal';
+                const maxDelta = getLimit(segType) / 100 * span;
+                const lower = design[i - 1] - maxDelta;
+                const upper = design[i - 1] + maxDelta;
+                design[i] = Math.max(lower, Math.min(upper, design[i]));
+            }
+            design[n - 1] = ground[n - 1];
+            for(let i = n - 2; i >= 0; i--) {
+                const span = Math.max(1, distances[i + 1] - distances[i]);
+                const segType = segs[Math.min(i, n - 2)].type || 'normal';
+                const maxDelta = getLimit(segType) / 100 * span;
+                const lower = design[i + 1] - maxDelta;
+                const upper = design[i + 1] + maxDelta;
+                design[i] = Math.max(lower, Math.min(upper, design[i]));
+            }
+            design[0] = ground[0];
+            for(let i = 1; i < n - 1; i++) {
+                const neighbour = (design[i - 1] + design[i + 1]) * 0.5;
+                design[i] = design[i] * 0.72 + target[i] * 0.18 + neighbour * 0.10;
+            }
+        }
+
+        const applyEndpointTieIn = (fromStart) => {
+            if(n < 3) return;
+            const boundaryIndex = fromStart ? 0 : (n - 1);
+            const neighbourIndex = fromStart ? 1 : (n - 2);
+            const boundaryType = segs[Math.max(0, Math.min(n - 2, fromStart ? 0 : n - 2))].type || 'normal';
+            const gradeLimit = Math.max(1.0, getLimit(boundaryType));
+            const boundaryElev = ground[boundaryIndex];
+            const neighbourElev = design[neighbourIndex];
+            const baseLength = Math.max(600, Math.min(2200, totalLength * 0.10));
+            const requiredLength = Math.abs(boundaryElev - neighbourElev) / Math.max(0.001, gradeLimit / 100) * 1.10;
+            const tieLength = Math.max(baseLength, requiredLength);
+            let anchorIndex = fromStart ? 0 : (n - 1);
+            if(fromStart) {
+                for(let k = 0; k < n; k++) {
+                    if(distances[k] - distances[0] >= tieLength) {
+                        anchorIndex = k;
+                        break;
+                    }
+                }
+                anchorIndex = Math.min(Math.max(1, anchorIndex), n - 2);
+                const anchorElev = design[anchorIndex];
+                for(let k = 0; k <= anchorIndex; k++) {
+                    const ratio = (distances[k] - distances[0]) / Math.max(1, distances[anchorIndex] - distances[0]);
+                    design[k] = interpolateNumber(boundaryElev, anchorElev, smoothStep01(ratio));
+                }
+            } else {
+                for(let k = n - 1; k >= 0; k--) {
+                    if(distances[n - 1] - distances[k] >= tieLength) {
+                        anchorIndex = k;
+                        break;
+                    }
+                }
+                anchorIndex = Math.max(1, Math.min(n - 2, anchorIndex));
+                const anchorElev = design[anchorIndex];
+                for(let k = anchorIndex; k < n; k++) {
+                    const ratio = (distances[k] - distances[anchorIndex]) / Math.max(1, distances[n - 1] - distances[anchorIndex]);
+                    design[k] = interpolateNumber(anchorElev, boundaryElev, smoothStep01(ratio));
+                }
+            }
+        };
+        applyEndpointTieIn(true);
+        applyEndpointTieIn(false);
+        for(let iter = 0; iter < 4; iter++) {
+            for(let i = 1; i < n; i++) {
+                const span = Math.max(1, distances[i] - distances[i - 1]);
+                const segType = segs[Math.max(0, i - 1)].type || 'normal';
+                const maxDelta = getLimit(segType) / 100 * span;
+                const lower = design[i - 1] - maxDelta;
+                const upper = design[i - 1] + maxDelta;
+                design[i] = Math.max(lower, Math.min(upper, design[i]));
+            }
+            design[n - 1] = ground[n - 1];
+            for(let i = n - 2; i >= 0; i--) {
+                const span = Math.max(1, distances[i + 1] - distances[i]);
+                const segType = segs[Math.min(i, n - 2)].type || 'normal';
+                const maxDelta = getLimit(segType) / 100 * span;
+                const lower = design[i + 1] - maxDelta;
+                const upper = design[i + 1] + maxDelta;
+                design[i] = Math.max(lower, Math.min(upper, design[i]));
+            }
+            design[0] = ground[0];
+        }
+
+        const trackGrades = new Array(n).fill(0);
+        for(let i = 1; i < n; i++) {
+            const span = Math.max(1, distances[i] - distances[i - 1]);
+            trackGrades[i] = ((design[i] - design[i - 1]) / span) * 100;
+        }
+
+        const unresolved = new Array(n).fill(false);
+        const unresolvedGrade = new Array(n).fill(false);
+        const unresolvedCurve = new Array(n).fill(false);
+        const unresolvedVertical = new Array(n).fill(false);
+        const verticalRecommendations = new Array(n).fill(null);
+        const verticalMessages = new Array(n).fill('');
+        const offsetAtSamples = design.map((value, idx) => value - ground[idx]);
+        const avgOffsets = new Array(n).fill(0);
+
+        const offsetThreshold = 2.0;
+        let i = 0;
+        while(i < n - 1) {
+            const offset = (offsetAtSamples[i] + offsetAtSamples[i + 1]) * 0.5;
+            avgOffsets[i] = offset;
+            if(Math.abs(offset) < offsetThreshold) {
+                i++;
+                continue;
+            }
+            const sign = offset >= 0 ? 1 : -1;
+            const runStart = i;
+            let runEnd = i;
+            let runLength = 0;
+            let maxAbs = 0;
+            let waterFlag = false;
+            let maxGround = -Infinity;
+            while(runEnd < n - 1) {
+                const runOffset = (offsetAtSamples[runEnd] + offsetAtSamples[runEnd + 1]) * 0.5;
+                avgOffsets[runEnd] = runOffset;
+                if(Math.abs(runOffset) < offsetThreshold || Math.sign(runOffset || sign) !== sign) break;
+                maxAbs = Math.max(maxAbs, Math.abs(runOffset));
+                runLength += Math.max(1, distances[runEnd + 1] - distances[runEnd]);
+                waterFlag = waterFlag || ground[runEnd] <= 1.5 || ground[runEnd + 1] <= 1.5;
+                maxGround = Math.max(maxGround, ground[runEnd], ground[runEnd + 1]);
+                runEnd++;
+            }
+            const segmentEnd = Math.max(runStart, runEnd - 1);
+            let recommendation = null;
+            if(sign > 0) {
+                const severeBridge = waterFlag || maxAbs > 18 || (maxAbs > 12 && runLength > 1500) || (runLength > 3000 && maxAbs > 8);
+                recommendation = severeBridge ? 'bridge' : 'fill';
+            } else {
+                const severeTunnel = maxAbs > 20 || (maxAbs > 14 && runLength > 1800) || (runLength > 3200 && maxAbs > 9) || (maxGround > e0 + 120 && maxAbs > 10);
+                recommendation = severeTunnel ? 'tunnel' : 'cut';
+            }
+            const message = sign > 0
+                ? `Track sits about ${maxAbs.toFixed(1)} m above ground over ${(runLength/1000).toFixed(1)} km. ${recommendation === 'bridge' ? 'Bridge' : 'Fill'} recommended.`
+                : `Track cuts about ${maxAbs.toFixed(1)} m into ground over ${(runLength/1000).toFixed(1)} km. ${recommendation === 'tunnel' ? 'Tunnel' : 'Cut'} recommended.`;
+            for(let k = runStart; k <= segmentEnd; k++) {
+                verticalRecommendations[k] = recommendation;
+                verticalMessages[k] = message;
+                const currentType = segs[k].type || 'normal';
+                let compatible = false;
+                if(recommendation === 'fill') {
+                    compatible = ['fill', 'cutfill', 'bridge'].includes(currentType);
+                } else if(recommendation === 'cut') {
+                    compatible = ['cut', 'cutfill', 'tunnel'].includes(currentType);
+                } else if(recommendation === 'bridge') {
+                    compatible = currentType === 'bridge';
+                    if(['fill', 'cutfill'].includes(currentType) && !waterFlag && maxAbs <= 12 && runLength <= 1800) compatible = true;
+                } else if(recommendation === 'tunnel') {
+                    compatible = currentType === 'tunnel';
+                    if(['cut', 'cutfill'].includes(currentType) && maxAbs <= 14 && runLength <= 2000 && maxGround <= e0 + 120) compatible = true;
+                }
+                if(!compatible) {
+                    unresolvedVertical[k] = true;
+                    unresolved[k] = true;
+                }
+            }
+            i = segmentEnd + 1;
+        }
+
+        const speedLocal = parseInt(document.getElementById('design-speed').value);
+        const minRadiusReq = (speedLocal * speedLocal) / 22;
+        for(let j = 0; j < n - 1; j++) {
+            const segType = segs[j].type || 'normal';
+            const gradeLimit = getLimit(segType);
+            const gradeIssue = (segType === 'cut' || segType === 'fill' || segType === 'cutfill')
+                ? false
+                : Math.abs(trackGrades[j + 1]) > gradeLimit + 0.05;
+            const curveIssue = segs[j].radius < minRadiusReq;
+            unresolvedGrade[j] = gradeIssue;
+            unresolvedCurve[j] = curveIssue;
+            if(gradeIssue || curveIssue) unresolved[j] = true;
+        }
+
+        return {
+            trackElevs: design,
+            trackGrades,
+            unresolved,
+            unresolvedGrade,
+            unresolvedCurve,
+            unresolvedVertical,
+            verticalRecommendations,
+            verticalMessages,
+            offsetAtSamples,
+            avgOffsets
+        };
+    },
+
     renderChart: function() {
         if (!state.chartInstance) return;
         const showGrade = document.getElementById('chk-grade-overlay').checked;
-        state.chartInstance.data.labels = state.segments.map(s => s.dist.toFixed(0));
-        state.chartInstance.data.datasets[0].data = state.segments.map(s => s.elev);
-        
-        if (showGrade) {
-            if(state.chartInstance.data.datasets.length === 1) {
-                state.chartInstance.data.datasets.push({
-                    label: 'Grade (%)', data: state.segments.map(s => s.grade),
-                    borderColor: 'rgba(255, 255, 0, 0.5)', borderWidth: 1, pointRadius: 0,
-                    yAxisID: 'y1', type: 'line'
-                });
-                state.chartInstance.options.scales.y1 = {
-                    type: 'linear', display: true, position: 'right',
-                    title: { display: true, text: 'Grade (%)' }, grid: { drawOnChartArea: false }
-                };
-            } else { state.chartInstance.data.datasets[1].data = state.segments.map(s => s.grade); }
-        } else {
-            if(state.chartInstance.data.datasets.length > 1) {
-                state.chartInstance.data.datasets.pop();
-                delete state.chartInstance.options.scales.y1;
+        const labels = state.segments.map(s => s.dist.toFixed(0));
+        const groundElevs = state.segments.map(s => s.elev);
+        const verticalDesign = this.computeVerticalDesign();
+        const trackElevs = verticalDesign.trackElevs;
+        const trackGrades = verticalDesign.trackGrades;
+        const unresolved = verticalDesign.unresolved;
+
+        state.chartInstance.data.labels = labels;
+        const datasets = [{
+            label: 'Elevation (m)',
+            data: groundElevs,
+            borderColor: CONFIG.colors.normal,
+            backgroundColor: 'rgba(0, 255, 255, 0.1)',
+            fill: true,
+            tension: 0.18,
+            pointRadius: 0,
+            borderWidth: 3,
+            segment: {
+                borderColor: ctx => {
+                    const idx = ctx.p1DataIndex;
+                    if(!state.segments[idx]) return CONFIG.colors.normal;
+                    const type = state.segments[idx].type || 'normal';
+                    return CONFIG.colors[type] || CONFIG.colors.normal;
+                }
             }
+        }];
+
+        if(trackElevs.length) {
+            datasets.push({
+                label: 'Rail Track',
+                data: trackElevs,
+                borderColor: '#ffffff',
+                borderWidth: 2,
+                fill: false,
+                pointRadius: 0,
+                tension: 0,
+                segment: {
+                    borderColor: ctx => unresolved[ctx.p0DataIndex] ? '#bdbdbd' : '#ffffff',
+                    borderDash: ctx => unresolved[ctx.p0DataIndex] ? [6, 6] : []
+                }
+            });
         }
+
+        if (showGrade) {
+            datasets.push({
+                label: 'Grade (%)',
+                data: trackGrades,
+                borderColor: 'rgba(255, 255, 0, 0.6)',
+                borderWidth: 1,
+                pointRadius: 0,
+                tension: 0,
+                yAxisID: 'y1',
+                type: 'line'
+            });
+            state.chartInstance.options.scales.y1 = {
+                type: 'linear', display: true, position: 'right',
+                title: { display: true, text: 'Track Grade (%)' }, grid: { drawOnChartArea: false }
+            };
+        } else {
+            delete state.chartInstance.options.scales.y1;
+        }
+
+        state.chartInstance.data.datasets = datasets;
         state.chartInstance.update();
     },
 
     updateStats: function() {
         if(state.segments.length === 0) return;
+        const verticalDesign = this.computeVerticalDesign();
         const lenM = state.segments[state.segments.length-1].dist;
         document.getElementById('stat-length').innerText = (lenM / 1000).toFixed(2) + " km";
-        
-        const grades = state.segments.map(s => Math.abs(s.grade));
+
+        const grades = verticalDesign.trackGrades.map(g => Math.abs(g || 0));
         const maxGrade = Math.max(...grades).toFixed(1);
         const gradeEl = document.getElementById('stat-grade');
         gradeEl.innerText = maxGrade + " %";
-        const limits = {
-            normal: parseFloat(document.getElementById('grade-normal').value),
-            bridge: parseFloat(document.getElementById('grade-bridge').value),
-            tunnel: parseFloat(document.getElementById('grade-tunnel').value)
-        };
-        const isGradeIssue = state.segments.some(s => Math.abs(s.grade) > limits[s.type]);
+        const isGradeIssue = verticalDesign.unresolvedGrade.some(Boolean);
         gradeEl.className = isGradeIssue ? "stat-danger" : "";
 
         const radii = state.segments.map(s => s.radius).filter(r => r > 0 && r !== Infinity);
@@ -1036,38 +1864,51 @@ const app = {
         const list = document.getElementById('warning-list');
         list.innerHTML = "";
         let count = 0;
-        const speed = parseInt(document.getElementById('design-speed').value);
-        const minR = (speed * speed) / 22; 
-        const limits = {
-            normal: parseFloat(document.getElementById('grade-normal').value),
-            bridge: parseFloat(document.getElementById('grade-bridge').value),
-            tunnel: parseFloat(document.getElementById('grade-tunnel').value)
-        };
-        let currentIssue = null;
-        state.segments.forEach((s, i) => {
-            let issueType = null; let msg = "";
-            
-            // Check Grade (skip if Tunnel)
-            if (s.type !== 'tunnel' && Math.abs(s.grade) > limits[s.type]) { 
-                issueType = "Grade"; msg = `Steep ${s.type} (${s.grade.toFixed(1)}%)`; 
+        const verticalDesign = this.computeVerticalDesign();
+        const collected = [];
+        const active = {};
+
+        const flushType = (type) => {
+            if(active[type]) {
+                collected.push(active[type]);
+                active[type] = null;
             }
-            
-            // Check Radius
-            if (s.radius < minR) { 
-                issueType = "Turn"; msg = `Tight (R=${s.radius.toFixed(0)}m)`; 
+        };
+
+        state.segments.forEach((s, i) => {
+            if(i >= state.segments.length - 1) return;
+            const issues = [];
+            if ((s.type === 'cut' || s.type === 'fill' || s.type === 'cutfill') && s.elev <= 1) {
+                issues.push({ type: 'Environment', msg: 'Earthworks across waterway' });
+            }
+            if (verticalDesign.unresolvedVertical[i]) {
+                issues.push({ type: 'Vertical', msg: verticalDesign.verticalMessages[i] || 'Vertical alignment correction needed.' });
+            }
+            if (verticalDesign.unresolvedGrade[i]) {
+                issues.push({ type: 'Grade', msg: `Track grade ${verticalDesign.trackGrades[i + 1].toFixed(1)}% exceeds limit` });
+            }
+            if (verticalDesign.unresolvedCurve[i]) {
+                issues.push({ type: 'Turn', msg: `Tight (R=${s.radius.toFixed(0)}m). Try Auto Curve Fix.` });
             }
 
-            if (issueType) {
-                if (!currentIssue || currentIssue.type !== issueType || currentIssue.endIndex !== i - 1) {
-                    if (currentIssue) this.addWarningDOM(currentIssue, list);
-                    currentIssue = { type: issueType, msg: msg, startIndex: i, endIndex: i };
-                    count++;
-                } else { currentIssue.endIndex = i; }
-            } else {
-                if (currentIssue) { this.addWarningDOM(currentIssue, list); currentIssue = null; }
-            }
+            const presentTypes = new Set(issues.map(issue => issue.type));
+            Object.keys(active).forEach(type => {
+                if(active[type] && !presentTypes.has(type)) flushType(type);
+            });
+
+            issues.forEach(issue => {
+                if(active[issue.type] && active[issue.type].msg === issue.msg && active[issue.type].endIndex === i - 1) {
+                    active[issue.type].endIndex = i;
+                } else {
+                    flushType(issue.type);
+                    active[issue.type] = { type: issue.type, msg: issue.msg, startIndex: i, endIndex: i };
+                }
+            });
         });
-        if (currentIssue) this.addWarningDOM(currentIssue, list);
+
+        Object.keys(active).forEach(flushType);
+        collected.forEach(issue => this.addWarningDOM(issue, list));
+        count = collected.length;
         document.getElementById('warn-count').innerText = count;
         document.getElementById('warn-count').style.backgroundColor = count > 0 ? 'var(--danger)' : '#444';
     },
@@ -1075,6 +1916,9 @@ const app = {
     addWarningDOM: function(issue, container) {
         const div = document.createElement('div');
         div.className = 'warning-box';
+        // store segment index range on the DOM element for lookup when scrolling
+        div.dataset.startIndex = issue.startIndex;
+        div.dataset.endIndex = issue.endIndex;
         const startKm = (state.segments[issue.startIndex].dist / 1000).toFixed(1);
         const endKm = (state.segments[issue.endIndex].dist / 1000).toFixed(1);
         div.innerHTML = `<strong>${issue.type}</strong> @ km ${startKm}-${endKm}<br>${issue.msg}`;
@@ -1097,22 +1941,25 @@ const app = {
         this.updateStats(); 
         this.renderChart(); // Force chart update
     },
-    // ... (保留 updateCost, downloadCSV, downloadImages, saveDesign, loadDesign 等) ...
+    // ... updateCost, downloadCSV, downloadImages, saveDesign, and loadDesign follow below ...
     costEstimator: {
         presets: {
-            low: { normal: 800000, bridge: 4000000, tunnel: 7000000 },
-            medium: { normal: 1000000, bridge: 5000000, tunnel: 8000000 },
-            high: { normal: 1400000, bridge: 7000000, tunnel: 12000000 }
+            // Earthwork rates are lower than bridge or tunnel but higher than normal track. One rate is used for both cut and fill.
+            low:    { normal: 800000, bridge: 4000000, tunnel: 7000000, cutfill: 500000 },
+            medium: { normal: 1000000, bridge: 5000000, tunnel: 8000000, cutfill: 600000 },
+            high:   { normal: 1400000, bridge: 7000000, tunnel: 12000000, cutfill: 800000 }
         },
         sensitivities: {
-            grade: { normal: 1.0, bridge: 0.6, tunnel: 0.0 }, // Tunnel grade penalty removed
-            curve: { normal: 1.0, bridge: 0.5, tunnel: 0.2 }
+            // Grade penalties are removed for tunnels, cut and fill; curve penalties reduced for bridges and earthworks
+            grade: { normal: 1.0, bridge: 0.6, tunnel: 0.0, cut: 0.0, fill: 0.0, cutfill: 0.0 },
+            curve: { normal: 1.0, bridge: 0.5, tunnel: 0.2, cut: 0.8, fill: 0.8, cutfill: 0.8 }
         },
         applyPreset: function(level) {
             const p = this.presets[level];
             document.getElementById('rate-normal').value = p.normal;
             document.getElementById('rate-bridge').value = p.bridge;
             document.getElementById('rate-tunnel').value = p.tunnel;
+            if(p.cutfill !== undefined) document.getElementById('rate-cutfill').value = p.cutfill;
             app.updateCost();
         }
     },
@@ -1121,7 +1968,8 @@ const app = {
         const rates = {
             normal: parseFloat(document.getElementById('rate-normal').value),
             bridge: parseFloat(document.getElementById('rate-bridge').value),
-            tunnel: parseFloat(document.getElementById('rate-tunnel').value)
+            tunnel: parseFloat(document.getElementById('rate-tunnel').value),
+            cutfill: parseFloat(document.getElementById('rate-cutfill').value)
         };
         const k_grade = parseFloat(document.getElementById('k-grade').value);
         const k_curve = parseFloat(document.getElementById('k-curve').value);
@@ -1151,71 +1999,144 @@ const app = {
         if(currStruct.type) structures.push(currStruct);
 
         const lenMultipliers = new Array(state.segments.length).fill(1.0);
+        function structuralLengthMultiplier(type, lengthMeters) {
+            const l0 = (type === 'tunnel') ? l0_tun : l0_bri;
+            const k = (type === 'tunnel') ? k_len_tun : k_len_bri;
+            const excessKm = Math.max(0, lengthMeters - l0) / 1000;
+            if(excessKm <= 0) return 1.0;
+            if(type === 'bridge') {
+                return Math.min(3.0, 1 + k * excessKm * 0.18);
+            }
+            return Math.min(4.5, 1 + k * excessKm * 0.25);
+        }
         structures.forEach(struct => {
              if(struct.type === 'tunnel' || struct.type === 'bridge') {
-                 let l0 = (struct.type === 'tunnel') ? l0_tun : l0_bri;
-                 let k = (struct.type === 'tunnel') ? k_len_tun : k_len_bri;
-                 let excessL = Math.max(0, struct.length - l0);
-                 let mult = Math.exp(k * (excessL / 1000));
+                 const mult = structuralLengthMultiplier(struct.type, struct.length);
                  struct.segments.forEach(idx => lenMultipliers[idx] = mult);
              }
         });
 
         let totalCost = 0;
-        const breakdown = { normal: { len:0, cost:0 }, bridge: { len:0, cost:0 }, tunnel: { len:0, cost:0 } };
+        const breakdown = { normal: { len:0, cost:0 }, bridge: { len:0, cost:0 }, tunnel: { len:0, cost:0 }, cutfill: { len:0, cost:0 } };
         const segmentCosts = [];
 
+        // Helper to derive group multiplier for cut/fill: cheap for local, expensive for long reach
+        function cutfillGroupMultiplier(lengthMeters) {
+            if (lengthMeters <= 1000) return 0.8; // short local cut/fill cheaper
+            if (lengthMeters <= 3000) return 1.0; // moderate length normal
+            return 1.4; // long continuous earthworks cost premium
+        }
+
+        // Accumulators for continuous cut/fill segments (treat both cut and fill the same for cost multiplier)
+        let cutfillSegs = [];
+        let cutfillLength = 0;
+
+        // Finalize any active cut/fill group: apply group multiplier and record costs
+        function finalizeCutfillGroup() {
+            if(cutfillSegs.length === 0) return;
+            const groupMult = cutfillGroupMultiplier(cutfillLength);
+            cutfillSegs.forEach(item => {
+                const seg = state.segments[item.index];
+                const cost = item.baseCost * item.mult_grade * item.mult_curve * groupMult * item.mult_env;
+                totalCost += cost;
+                breakdown.cutfill.cost += cost;
+                segmentCosts.push({
+                    start: seg.dist,
+                    type: seg.type || 'cut',
+                    cost: cost,
+                    m_grade: item.mult_grade,
+                    m_curve: item.mult_curve,
+                    m_elev: 1,
+                    m_len: groupMult
+                });
+            });
+            cutfillSegs = [];
+            cutfillLength = 0;
+        }
+
         state.segments.forEach((s, i) => {
-            if(s.length_m <= 0) return; 
+            if(s.length_m <= 0) return;
             const units = s.length_m / 100;
-            const baseRate = rates[s.type];
+            const rateKey = (s.type === 'cut' || s.type === 'fill' || s.type === 'cutfill') ? 'cutfill' : s.type;
+            const baseRate = rates[rateKey] || rates.normal;
             const baseCost = baseRate * units;
-
-            const g = Math.abs(s.grade) / 100; 
+            const g = Math.abs(s.grade) / 100;
             const s_g = sens.grade[s.type];
-            // Explicitly force multiplier to 1 if tunnel, though sens is 0
-            const mult_grade = (s.type === 'tunnel') ? 1.0 : Math.exp(k_grade * s_g * g);
-
+            // Grade multiplier: cut/fill and tunnel ignore grade penalty
+            const mult_grade = (s.type === 'tunnel' || s.type === 'cut' || s.type === 'fill' || s.type === 'cutfill') ? 1.0 : Math.exp(k_grade * s_g * g);
+            // Curve multiplier
             let mult_curve = 1;
             if (s.radius && s.radius > 0 && s.radius !== Infinity) {
-                const tightness = Math.max(0, (R_min / s.radius) - 1);
                 const s_c = sens.curve[s.type];
-                mult_curve = Math.exp(k_curve * s_c * tightness);
+                mult_curve = curveCostMultiplier(s.type, s.radius, R_min, k_curve, s_c);
             }
-
+            // Elevation multiplier for tunnels
             let mult_elev = 1;
             if(s.type === 'tunnel') {
                 const excessE = Math.max(0, s.elev - e0);
                 mult_elev = Math.exp(k_elev * (excessE / 100));
             }
-
+            // Length multiplier for tunnels/bridges
             const mult_len = lenMultipliers[i];
+            // Handle cutfill group accumulation
+            if(s.type === 'cutfill' || s.type === 'cut' || s.type === 'fill') {
+                cutfillLength += s.length_m;
+                breakdown.cutfill.len += s.length_m;
+                // Determine environmental penalty multiplier for earthworks across waterways
+                const mult_env = ((s.elev <= 1) ? 10 : 1);
+                cutfillSegs.push({ index: i, baseCost: baseCost, mult_grade: mult_grade, mult_curve: mult_curve, mult_env: mult_env });
+                return;
+            }
+            // Finalize any preceding cutfill group when encountering a non‑cutfill segment
+            if(cutfillSegs.length > 0) finalizeCutfillGroup();
+            // Compute cost for non‑cutfill segments
             let mult_total = 1;
-            if(s.type === 'tunnel') mult_total = mult_len * mult_elev * mult_curve;
-            else if(s.type === 'bridge') mult_total = mult_len * mult_grade * mult_curve;
-            else mult_total = mult_grade * mult_curve;
-
-            const cost = baseCost * mult_total;
+            if(s.type === 'tunnel') {
+                mult_total = mult_len * mult_elev * mult_curve;
+            } else if(s.type === 'bridge') {
+                mult_total = mult_len * mult_grade * mult_curve;
+            } else {
+                // Normal segments use grade and curve multipliers only
+                mult_total = mult_grade * mult_curve;
+            }
+            // Apply environmental penalty for single earthworks segments
+            let mult_env = 1;
+            if((s.type === 'cut' || s.type === 'fill' || s.type === 'cutfill') && s.elev <= 1) {
+                mult_env = 10;
+            }
+            const cost = baseCost * mult_total * mult_env;
             totalCost += cost;
-            breakdown[s.type].len += s.length_m;
-            breakdown[s.type].cost += cost;
-
+            // For cut and fill, group them under cutfill in breakdown
+            if(s.type === 'cut' || s.type === 'fill') {
+                breakdown.cutfill.len += s.length_m;
+                breakdown.cutfill.cost += cost;
+            } else {
+                breakdown[s.type].len += s.length_m;
+                breakdown[s.type].cost += cost;
+            }
             segmentCosts.push({
                 start: s.dist,
                 type: s.type,
                 cost: cost,
-                m_grade: (s.type!=='tunnel') ? mult_grade : 1,
+                m_grade: (s.type !== 'tunnel') ? mult_grade : 1,
                 m_curve: mult_curve,
                 m_elev: mult_elev,
-                m_len: mult_len
+                m_len: (s.type === 'tunnel' || s.type === 'bridge') ? mult_len : 1,
+                m_env: mult_env
             });
         });
+        // Finalize any remaining cut/fill group at end
+        if(cutfillSegs.length > 0) finalizeCutfillGroup();
 
         document.getElementById('cost-total').innerText = "$" + (totalCost / 1000000).toFixed(1) + " Million";
         document.getElementById('cost-breakdown').style.display = 'block';
-        ['normal', 'bridge', 'tunnel'].forEach(t => {
-            document.getElementById(`bd-len-${t}`).innerText = (breakdown[t].len/1000).toFixed(1) + "km";
-            document.getElementById(`bd-cost-${t}`).innerText = "$" + (breakdown[t].cost/1000000).toFixed(1) + "M";
+        ['normal', 'bridge', 'tunnel', 'cutfill'].forEach(t => {
+            const lenElem = document.getElementById(`bd-len-${t}`);
+            const costElem = document.getElementById(`bd-cost-${t}`);
+            if(lenElem && costElem) {
+                lenElem.innerText = (breakdown[t].len/1000).toFixed(1) + "km";
+                costElem.innerText = "$" + (breakdown[t].cost/1000000).toFixed(1) + "M";
+            }
         });
 
         segmentCosts.sort((a,b) => b.cost - a.cost);
@@ -1230,6 +2151,7 @@ const app = {
             if(item.m_curve > 1.1) drivers.push(`Curve ${(item.m_curve).toFixed(1)}x`);
             if(item.m_elev > 1.1) drivers.push(`Deep ${(item.m_elev).toFixed(1)}x`);
             if(item.m_len > 1.1) drivers.push(`Long ${(item.m_len).toFixed(1)}x`);
+            if(item.m_env && item.m_env > 1) drivers.push(`Env ${item.m_env.toFixed(0)}x`);
             
             const row = document.createElement('div');
             row.className = 'cost-detail-item';
@@ -1243,6 +2165,51 @@ const app = {
             }
             expDiv.appendChild(row);
         });
+
+        // --- Compute and display earthworks volumes ---
+        let totalCutVol = 0;
+        let totalFillVol = 0;
+        const widthConst = 12; // approximate formation width (m)
+        const verticalDesign = this.computeVerticalDesign();
+        state.segments.forEach((s, i) => {
+            if((s.type === 'cut' || s.type === 'fill' || s.type === 'cutfill') && s.length_m > 0 && i < state.segments.length - 1) {
+                const groundAvg = ((state.segments[i].elev || 0) + (state.segments[i + 1].elev || 0)) * 0.5;
+                const trackAvg = ((verticalDesign.trackElevs[i] || 0) + (verticalDesign.trackElevs[i + 1] || 0)) * 0.5;
+                const diff = trackAvg - groundAvg;
+                const vol = Math.abs(diff) * widthConst * s.length_m;
+                if(diff >= 0) totalFillVol += vol; else totalCutVol += vol;
+            }
+        });
+        const balanced = Math.min(totalCutVol, totalFillVol);
+        const importVol = Math.max(0, totalFillVol - balanced);
+        const exportVol = Math.max(0, totalCutVol - balanced);
+        const volDiv = document.getElementById('volume-summary');
+        if(volDiv) {
+            if(totalCutVol > 0 || totalFillVol > 0) {
+                volDiv.style.display = 'block';
+                document.getElementById('vol-cut').innerText = (totalCutVol/1000000).toFixed(2) + ' M m³';
+                document.getElementById('vol-fill').innerText = (totalFillVol/1000000).toFixed(2) + ' M m³';
+                document.getElementById('vol-balanced').innerText = (balanced/1000000).toFixed(2) + ' M m³';
+                document.getElementById('vol-import').innerText = (importVol/1000000).toFixed(2) + ' M m³';
+                document.getElementById('vol-export').innerText = (exportVol/1000000).toFixed(2) + ' M m³';
+                const importRow = document.getElementById('vol-import').parentElement;
+                const exportRow = document.getElementById('vol-export').parentElement;
+                if(importRow) {
+                    importRow.title = 'Import means the fill demand is larger than the usable local cut. Extra soil must be hauled in from outside the corridor, which usually adds transport, handling, placement and environmental compliance costs.';
+                    importRow.style.cursor = 'help';
+                }
+                if(exportRow) {
+                    exportRow.title = 'Export means the cut material cannot all be reused locally. Surplus spoil must be hauled away or disposed of elsewhere, which usually adds loading, trucking, disposal and approval costs.';
+                    exportRow.style.cursor = 'help';
+                }
+            } else {
+                volDiv.style.display = 'none';
+                const importRow = document.getElementById('vol-import') ? document.getElementById('vol-import').parentElement : null;
+                const exportRow = document.getElementById('vol-export') ? document.getElementById('vol-export').parentElement : null;
+                if(importRow) importRow.title = 'Import means extra fill must be brought in from outside the project corridor.';
+                if(exportRow) exportRow.title = 'Export means surplus cut material must be taken out of the corridor.';
+            }
+        }
     },
 
     downloadCSV: function() {
@@ -1256,51 +2223,1024 @@ const app = {
         link.download = "alignment.csv";
         link.click();
     },
+
+    /**
+     * Export the current alignment as a KML file for offline viewing.
+     * The generated KML contains a single LineString with 3D coordinates
+     * (longitude,latitude,elevation). If no route is defined, an alert is shown.
+     */
+    downloadKML: function() {
+        if(state.segments.length === 0) {
+            alert("Draw a route first.");
+            return;
+        }
+        // Build KML coordinates string (lon,lat,alt). Use elevation as the third value.
+        const coords = state.segments.map(s => {
+            const lon = s.lng.toFixed(6);
+            const lat = s.lat.toFixed(6);
+            const alt = (s.elev || 0).toFixed(1);
+            return `${lon},${lat},${alt}`;
+        }).join(' ');
+        const kml = `<?xml version="1.0" encoding="UTF-8"?>\n` +
+                    `<kml xmlns="http://www.opengis.net/kml/2.2">\n` +
+                    `  <Document>\n` +
+                    `    <name>HSR Alignment</name>\n` +
+                    `    <Placemark>\n` +
+                    `      <name>Route</name>\n` +
+                    `      <Style>\n` +
+                    `        <LineStyle><color>ff00ffff</color><width>4</width></LineStyle>\n` +
+                    `      </Style>\n` +
+                    `      <LineString>\n` +
+                    `        <tessellate>1</tessellate>\n` +
+                    `        <coordinates>\n          ${coords}\n        </coordinates>\n` +
+                    `      </LineString>\n` +
+                    `    </Placemark>\n` +
+                    `  </Document>\n` +
+                    `</kml>`;
+        const link = document.createElement('a');
+        link.href = 'data:text/xml;charset=utf-8,' + encodeURIComponent(kml);
+        link.download = 'alignment.kml';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    },
     downloadImages: function() {
         const a = document.createElement('a');
         a.href = state.chartInstance.toBase64Image();
         a.download = 'profile.png';
         a.click();
     },
-    saveDesign: function() {
-        const data = {
-            controlPoints: state.controlPoints.map(m => m.getLatLng()),
-            segments: state.segments,
-            costs: {
-                normal: document.getElementById('rate-normal').value,
-                bridge: document.getElementById('rate-bridge').value,
-                tunnel: document.getElementById('rate-tunnel').value
+    getSessionFieldIds: function() {
+        return [
+            'design-speed',
+            'grade-normal',
+            'grade-bridge',
+            'grade-tunnel',
+            'rate-normal',
+            'rate-bridge',
+            'rate-tunnel',
+            'rate-cutfill',
+            'k-grade',
+            'k-curve',
+            'k-elev',
+            'e0-limit',
+            'k-len-tun',
+            'l0-tun',
+            'k-len-bri',
+            'l0-bri',
+            'chk-range',
+            'chk-grade-overlay'
+        ];
+    },
+    captureFormValues: function() {
+        const values = {};
+        this.getSessionFieldIds().forEach(id => {
+            const el = document.getElementById(id);
+            if(!el) return;
+            values[id] = el.type === 'checkbox' ? el.checked : el.value;
+        });
+        return values;
+    },
+    applyFormValues: function(values) {
+        if(!values) return;
+        this.getSessionFieldIds().forEach(id => {
+            if(values[id] === undefined) return;
+            const el = document.getElementById(id);
+            if(!el) return;
+            if(el.type === 'checkbox') el.checked = !!values[id];
+            else el.value = values[id];
+        });
+    },
+    buildSessionData: function() {
+        const center = this.map.getCenter();
+        return {
+            kind: 'hsrda-student-session',
+            version: SESSION_FILE_VERSION,
+            savedAt: new Date().toISOString(),
+            controlPoints: state.controlPoints.map(m => {
+                const ll = m.getLatLng();
+                return { lat: ll.lat, lng: ll.lng };
+            }),
+            segmentTypes: state.segments.map(s => s.type),
+            formValues: this.captureFormValues(),
+            uiState: {
+                mode: state.mode,
+                buildTool: state.buildTool,
+                terrainEnabled: !!state.terrainLayer,
+                mapView: {
+                    lat: center.lat,
+                    lng: center.lng,
+                    zoom: this.map.getZoom()
+                }
+            },
+            elevationCache: Array.from(state.elevationCache.entries()),
+            undoStack: state.undoStack.map(entry => ({
+                controlPoints: Array.isArray(entry.controlPoints) ? entry.controlPoints.map(pt => ({ lat: pt.lat, lng: pt.lng })) : [],
+                segmentTypes: Array.isArray(entry.segmentTypes) ? entry.segmentTypes.slice() : []
+            })),
+            localKML: state.localKMLMode && state.localKMLFeatures && state.kmlBoundingBox ? {
+                features: state.localKMLFeatures.map(feature => ({
+                    alt: feature.alt,
+                    points: Array.isArray(feature.points) ? feature.points.map(pt => ({
+                        lat: pt.lat,
+                        lng: pt.lng,
+                        elev: pt.elev
+                    })) : []
+                })),
+                boundingBox: [
+                    [state.kmlBoundingBox[0][0], state.kmlBoundingBox[0][1]],
+                    [state.kmlBoundingBox[1][0], state.kmlBoundingBox[1][1]]
+                ]
+            } : null
+        };
+    },
+    clearSessionWorkspace: function() {
+        if(state.recalcTimer) {
+            clearTimeout(state.recalcTimer);
+            state.recalcTimer = null;
+        }
+        if(state.abortController) {
+            state.abortController.abort();
+            state.abortController = null;
+        }
+        requestManager.clear();
+        this.hideIssuePopup();
+        state.isPainting = false;
+        state.rangeSelectionAnchor = null;
+        state.controlPoints.forEach(marker => this.map.removeLayer(marker));
+        state.controlPoints = [];
+        state.segments = [];
+        if(state.routeLayer) state.routeLayer.clearLayers();
+        if(state.localKMLMode || state.localKMLLayer || state.kmlBoundingBoxRect) {
+            this.exitLocalKMLMode();
+        }
+        state.localKMLFeatures = null;
+        state.kmlScaleMinAlt = null;
+        state.kmlScaleMaxAlt = null;
+        if(state.terrainLayer) {
+            this.map.removeLayer(state.terrainLayer);
+            state.terrainLayer = null;
+        }
+        const terrainBtn = document.getElementById('btn-terrain');
+        if(terrainBtn) terrainBtn.classList.remove('toggle-active');
+        state.elevationCache = new Map();
+        state.undoStack = [];
+        state.chartInstance.data.labels = [];
+        state.chartInstance.data.datasets[0].data = [];
+        state.chartInstance.update();
+        this.updateStats();
+        this.updateRangeFillStatus();
+    },
+    extractSegmentTypes: function(data) {
+        if(Array.isArray(data.segmentTypes)) return data.segmentTypes.slice();
+        if(Array.isArray(data.segments)) {
+            return data.segments.map(seg => {
+                if(typeof seg === 'string') return seg;
+                return seg && seg.type ? seg.type : 'normal';
+            });
+        }
+        return [];
+    },
+    normalizeSessionData: function(data) {
+        const formValues = Object.assign({}, data.formValues || {});
+        if(data.costs) {
+            formValues['rate-normal'] = data.costs.normal;
+            formValues['rate-bridge'] = data.costs.bridge;
+            formValues['rate-tunnel'] = data.costs.tunnel;
+            if(data.costs.cutfill !== undefined) formValues['rate-cutfill'] = data.costs.cutfill;
+        }
+        return {
+            controlPoints: Array.isArray(data.controlPoints) ? data.controlPoints.map(ll => ({ lat: ll.lat, lng: ll.lng })) : [],
+            segmentTypes: this.extractSegmentTypes(data),
+            formValues: formValues,
+            uiState: {
+                mode: data.uiState && data.uiState.mode ? data.uiState.mode : 'plan',
+                buildTool: data.uiState && data.uiState.buildTool ? data.uiState.buildTool : 'normal',
+                terrainEnabled: !!(data.uiState && data.uiState.terrainEnabled),
+                mapView: data.uiState && data.uiState.mapView ? data.uiState.mapView : null
+            },
+            elevationCache: Array.isArray(data.elevationCache) ? data.elevationCache : [],
+            undoStack: Array.isArray(data.undoStack) ? data.undoStack : [],
+            localKML: data.localKML || null
+        };
+    },
+    waitForRestoreReady: function(maxWaitMs = 8000) {
+        return new Promise(resolve => {
+            const startedAt = Date.now();
+            const poll = () => {
+                const loadingBox = document.getElementById('loading-container');
+                const isLoading = loadingBox && loadingBox.style.display === 'block';
+                const timedOut = (Date.now() - startedAt) >= maxWaitMs;
+                const routeReady = state.controlPoints.length < 2 || state.segments.length > 0;
+                if(timedOut || (!state.recalcTimer && !isLoading && routeReady)) {
+                    resolve();
+                    return;
+                }
+                setTimeout(poll, 150);
+            };
+            poll();
+        });
+    },
+    applySavedSegmentTypes: function(segmentTypes) {
+        if(!Array.isArray(segmentTypes) || segmentTypes.length === 0) return;
+        const limit = Math.min(segmentTypes.length, state.segments.length);
+        for(let i = 0; i < limit; i++) {
+            if(segmentTypes[i]) state.segments[i].type = segmentTypes[i];
+        }
+        if(segmentTypes.length && state.segments.length && segmentTypes.length !== state.segments.length) {
+            alert('Session loaded, but some painted segment types could not be restored exactly because the route sampling changed.');
+        }
+    },
+    restoreSessionData: async function(data) {
+        const session = this.normalizeSessionData(data);
+        this.clearSessionWorkspace();
+        this.applyFormValues(session.formValues);
+
+        if(session.elevationCache.length) {
+            state.elevationCache = new Map(session.elevationCache);
+        }
+
+        if(session.localKML && Array.isArray(session.localKML.features) && Array.isArray(session.localKML.boundingBox) && session.localKML.boundingBox.length === 2) {
+            const features = session.localKML.features.map(feature => ({
+                alt: feature.alt,
+                points: Array.isArray(feature.points) ? feature.points.map(pt => ({
+                    lat: pt.lat,
+                    lng: pt.lng,
+                    elev: pt.elev
+                })) : []
+            }));
+            this.enterLocalKMLMode(features, session.localKML.boundingBox[0], session.localKML.boundingBox[1]);
+        }
+
+        session.controlPoints.forEach(ll => {
+            if(typeof ll.lat === 'number' && typeof ll.lng === 'number') {
+                this.addControlPoint([ll.lat, ll.lng], null, true);
+            }
+        });
+
+        await this.waitForRestoreReady();
+        this.applySavedSegmentTypes(session.segmentTypes);
+
+        state.undoStack = session.undoStack.map(entry => ({
+            controlPoints: Array.isArray(entry.controlPoints) ? entry.controlPoints.map(pt => ({ lat: pt.lat, lng: pt.lng })) : [],
+            segmentTypes: Array.isArray(entry.segmentTypes) ? entry.segmentTypes.slice() : []
+        }));
+
+        this.setBuildTool(session.uiState.buildTool || 'normal');
+        this.setMode(session.uiState.mode || 'plan');
+        if(session.uiState.terrainEnabled) this.toggleTerrain();
+        this.updateParams();
+
+        const mapView = session.uiState.mapView;
+        if(mapView && isFinite(mapView.lat) && isFinite(mapView.lng) && isFinite(mapView.zoom)) {
+            this.map.setView([mapView.lat, mapView.lng], mapView.zoom);
+        }
+    },
+    saveSession: function() {
+        const session = this.buildSessionData();
+        const blob = new Blob([JSON.stringify(session, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = 'hsr-session.json';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        setTimeout(() => URL.revokeObjectURL(url), 0);
+    },
+    loadSession: function(input) {
+        const file = input.files && input.files[0];
+        if(!file) return;
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+            try {
+                const data = JSON.parse(e.target.result);
+                await this.restoreSessionData(data);
+            } catch(err) {
+                console.error(err);
+                alert('Failed to load the selected session file.');
+            } finally {
+                input.value = '';
             }
         };
-        const blob = new Blob([JSON.stringify(data)], {type : 'application/json'});
-        const link = document.createElement("a");
-        link.href = URL.createObjectURL(blob);
-        link.download = "design.json";
-        link.click();
+        reader.readAsText(file);
+    },
+    saveDesign: function() {
+        this.saveSession();
     },
     loadDesign: function(input) {
-        const file = input.files[0];
+        this.loadSession(input);
+    }
+
+    ,
+    /**
+     * Automatically fix grade issues by marking offending segments as cut/fill.  
+     * This function scans all non-tunnel segments for grade violations and  
+     * changes their type to 'cutfill'. Cost and visuals update automatically.
+     */
+    fixGrades: function() {
+        // Save current state for undo
+        this.saveState();
+        const speed = parseInt(document.getElementById('design-speed').value);
+        const limits = {
+            normal: parseFloat(document.getElementById('grade-normal').value),
+            bridge: parseFloat(document.getElementById('grade-bridge').value),
+            tunnel: parseFloat(document.getElementById('grade-tunnel').value)
+        };
+        let changed = false;
+        state.segments.forEach((s) => {
+            // Skip tunnels and segments already assigned as earthworks
+            if(s.type === 'tunnel' || s.type === 'cut' || s.type === 'fill') return;
+            const absG = Math.abs(s.grade);
+            if(absG > limits[s.type]) {
+                // Assign to cut or fill depending on slope sign
+                s.type = (s.grade > 0) ? 'fill' : 'cut';
+                changed = true;
+            }
+        });
+        if(changed) {
+            // Update UI to reflect new types and costs
+            this.updateParams();
+        } else {
+            alert('No grade violations to fix.');
+        }
+    },
+
+    /**
+     * Save the current design state for undo functionality.
+     * Stores up to the last 10 states. Each saved state captures control point positions,
+     * and current segment type assignments. When restoring, geometry and segment types will be reapplied and route recalculated.
+     */
+    saveState: function() {
+        // snapshot of control point lat/lngs
+        const cps = state.controlPoints.map(m => {
+            const ll = m.getLatLng();
+            return { lat: ll.lat, lng: ll.lng };
+        });
+        // snapshot of segment types (only type needed)
+        const segTypes = state.segments.map(s => s.type);
+        // push to undo stack
+        state.undoStack.push({ controlPoints: cps, segmentTypes: segTypes });
+        // maintain a maximum of 10 undo states
+        if(state.undoStack.length > 10) state.undoStack.shift();
+    },
+
+    /**
+     * Undo the last user action. Restores the previous saved state if available.
+     */
+    undo: function() {
+        if(state.undoStack.length === 0) {
+            alert('Nothing to undo.');
+            return;
+        }
+        const last = state.undoStack.pop();
+        // clear current markers
+        state.controlPoints.forEach(m => this.map.removeLayer(m));
+        state.controlPoints = [];
+        // restore control points
+        last.controlPoints.forEach(ll => this.addControlPoint([ll.lat, ll.lng], null, true));
+        // schedule recalc then apply segment types after geometry and elevation loaded
+        // We wait a bit to allow elevation data to sync before applying types
+        setTimeout(() => {
+            state.segments.forEach((s, i) => {
+                if(last.segmentTypes && last.segmentTypes[i]) {
+                    s.type = last.segmentTypes[i];
+                }
+            });
+            this.updateParams();
+        }, 2000);
+    },
+
+    /**
+     * Intelligent routing helper. This function scans the current elevation and curvature
+     * profile and assigns more appropriate structure types automatically. Segments with
+     * grades above the normal limit become cut/fill operations, while extremely steep
+     * sections or very tight curves are converted to tunnels. Moderate curvature
+     * sections become bridges. This routine overrides any previous manual
+     * assignments and recalculates costs and warnings in real time.
+     */
+    smartRouting: function() {
+        // Save current state for undo
+        this.saveState();
+        // Get user‑defined parameters and cost rates
+        const speed = parseInt(document.getElementById('design-speed').value);
+        const R_min = (speed * speed) / 22;
+        const limitNormal = parseFloat(document.getElementById('grade-normal').value);
+        // Retrieve rates and cost multipliers for cost comparison
+        const rates = {
+            normal: parseFloat(document.getElementById('rate-normal').value),
+            bridge: parseFloat(document.getElementById('rate-bridge').value),
+            tunnel: parseFloat(document.getElementById('rate-tunnel').value),
+            cutfill: parseFloat(document.getElementById('rate-cutfill').value)
+        };
+        const k_grade = parseFloat(document.getElementById('k-grade').value);
+        const k_curve = parseFloat(document.getElementById('k-curve').value);
+        const k_elev = parseFloat(document.getElementById('k-elev').value);
+        const e0 = parseFloat(document.getElementById('e0-limit').value);
+        const sens = app.costEstimator.sensitivities;
+        let changed = false;
+        // Helper: compute approximate cost for a segment for a given candidate type
+        function approxCostFor(s, candidate) {
+            // Determine base rate
+            const baseRate = (candidate === 'cut' || candidate === 'fill' || candidate === 'cutfill') ? rates.cutfill : rates[candidate];
+            const units = s.length_m / 100;
+            const g = Math.abs(s.grade) / 100;
+            // grade multiplier: tunnels and earthworks ignore grade penalty
+            let multGrade = 1.0;
+            if(candidate !== 'tunnel' && candidate !== 'cut' && candidate !== 'fill' && candidate !== 'cutfill') {
+                const sg = sens.grade[candidate] !== undefined ? sens.grade[candidate] : 1.0;
+                multGrade = Math.exp(k_grade * sg * g);
+            }
+            // curve multiplier for each type
+            let multCurve = 1.0;
+            if(s.radius && s.radius > 0 && s.radius !== Infinity) {
+                const sc = sens.curve[candidate] !== undefined ? sens.curve[candidate] : 1.0;
+                multCurve = curveCostMultiplier(candidate, s.radius, R_min, k_curve, sc);
+            }
+            // elevation multiplier for tunnels
+            let multElev = 1.0;
+            if(candidate === 'tunnel') {
+                const excessE = Math.max(0, s.elev - e0);
+                multElev = Math.exp(k_elev * (excessE / 100));
+            }
+            return baseRate * units * multGrade * multCurve * multElev;
+        }
+        // Iterate over segments and assign type based on grade and curvature with cost comparison
+        state.segments.forEach((s) => {
+            if(s.length_m <= 0) return;
+            let newType = s.type;
+            const absGrade = Math.abs(s.grade);
+            // Always treat sea‑level segments as bridge
+            if(s.elev <= 1.0) {
+                newType = 'bridge';
+            } else if(absGrade > 2 * limitNormal) {
+                // Very steep: tunnel regardless of curve
+                newType = 'tunnel';
+            } else if(absGrade > limitNormal) {
+                // Moderately steep: earthworks (cut or fill) depending on sign
+                newType = (s.grade >= 0) ? 'fill' : 'cut';
+            } else if(s.radius && s.radius < R_min) {
+                // Curvature violation: choose cheapest among cut/fill, bridge and tunnel
+                const costCut = approxCostFor(s, 'cut');
+                const costFill = approxCostFor(s, 'fill');
+                const costBridge = approxCostFor(s, 'bridge');
+                const costTunnel = approxCostFor(s, 'tunnel');
+                // Determine cheapest cost
+                let minCost = costCut;
+                let chosen = (s.grade >= 0 ? 'fill' : 'cut');
+                if(costFill < minCost) { minCost = costFill; chosen = (s.grade >= 0 ? 'fill' : 'cut'); }
+                if(costBridge < minCost) { minCost = costBridge; chosen = 'bridge'; }
+                if(costTunnel < minCost) { minCost = costTunnel; chosen = 'tunnel'; }
+                newType = chosen;
+            } else {
+                newType = 'normal';
+            }
+            if(newType !== s.type) {
+                s.type = newType;
+                changed = true;
+            }
+        });
+        if(changed) {
+            this.updateParams();
+        } else {
+            alert('No changes suggested by smart routing.');
+        }
+    },
+
+    autoCurveFix: function() {
+        if(state.controlPoints.length < 3) {
+            alert('Add at least three control points before running Auto Curve Fix.');
+            return;
+        }
+        this.saveState();
+        const speed = parseInt(document.getElementById('design-speed').value);
+        const requiredRadius = (speed * speed) / 22;
+        let changed = false;
+        const movedPoints = new Set();
+
+        for(let iteration = 0; iteration < 80; iteration++) {
+            let iterationChanged = false;
+            for(let i = 1; i < state.controlPoints.length - 1; i++) {
+                const prev = state.controlPoints[i - 1].getLatLng();
+                const curr = state.controlPoints[i].getLatLng();
+                const next = state.controlPoints[i + 1].getLatLng();
+                const radius = effectiveHorizontalRadius(prev, curr, next);
+                if(radius >= requiredRadius * 1.02) continue;
+                const midpointLat = (prev.lat + next.lat) / 2;
+                const midpointLng = (prev.lng + next.lng) / 2;
+                const severity = Math.min(0.7, 0.16 + Math.max(0, 1 - radius / Math.max(requiredRadius, 1)) * 0.55);
+                const newLat = curr.lat + (midpointLat - curr.lat) * severity;
+                const newLng = curr.lng + (midpointLng - curr.lng) * severity;
+                state.controlPoints[i].setLatLng([newLat, newLng]);
+                movedPoints.add(i);
+                iterationChanged = true;
+                changed = true;
+            }
+            if(!iterationChanged) break;
+        }
+
+        if(!changed) {
+            alert('The current control points already satisfy the selected curvature target, or no further automatic straightening was possible.');
+            return;
+        }
+        this.scheduleRecalc();
+        setTimeout(() => {
+            alert(`Auto Curve Fix adjusted ${movedPoints.size} control point${movedPoints.size === 1 ? '' : 's'}. The route and warning list have been recalculated.`);
+        }, 50);
+    },
+
+    hideIssuePopupSoon: function(delay = 220) {
+        if(state.popupHideTimer) clearTimeout(state.popupHideTimer);
+        state.popupHideTimer = setTimeout(() => {
+            if(!state.popupPointerInside) {
+                this.hideIssuePopup();
+            }
+        }, delay);
+    },
+
+    /**
+     * Scroll the warnings list to the warning entry corresponding to a specific segment index.
+     * When in build mode and a problematic segment is clicked, this helps students see the related
+     * warning without manually finding it.
+     * @param {number} segIndex Index of the clicked segment
+     */
+    scrollToWarning: function(segIndex) {
+        const list = document.getElementById('warning-list');
+        const items = list.querySelectorAll('.warning-box');
+        items.forEach(item => {
+            const start = parseInt(item.dataset.startIndex);
+            const end = parseInt(item.dataset.endIndex);
+            if(!isNaN(start) && !isNaN(end) && segIndex >= start && segIndex <= end) {
+                item.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                // optional highlight effect
+                item.style.backgroundColor = '#333';
+                setTimeout(() => { item.style.backgroundColor = ''; }, 2000);
+            }
+        });
+    },
+
+    /**
+     * Find the continuous vertical-issue run containing a given segment.
+     * This is more informative than looking at a single 100 m segment because
+     * the recommendation logic is based on the whole problematic run.
+     */
+    getVerticalRunInfo: function(segIndex, vd) {
+        if(!vd || !vd.unresolvedVertical || !vd.unresolvedVertical[segIndex]) return null;
+        let start = segIndex;
+        let end = segIndex;
+        while(start > 0 && vd.unresolvedVertical[start - 1]) start--;
+        while(end < state.segments.length - 2 && vd.unresolvedVertical[end + 1]) end++;
+        let runLength = 0;
+        let maxAbs = 0;
+        let waterFlag = false;
+        let dominantSign = 0;
+        for(let i = start; i <= end; i++) {
+            const offset = (vd.avgOffsets && typeof vd.avgOffsets[i] === 'number') ? vd.avgOffsets[i] : 0;
+            if(Math.abs(offset) > maxAbs) {
+                maxAbs = Math.abs(offset);
+                dominantSign = Math.sign(offset);
+            }
+            runLength += Math.max(0, state.segments[i].length_m || 0);
+            waterFlag = waterFlag || (state.segments[i].elev <= 1.5);
+        }
+        return { start, end, runLength, maxAbs, waterFlag, sign: dominantSign || 1 };
+    },
+
+    /**
+     * Approximate the total treatment cost for a whole vertical-issue run rather
+     * than just the hovered segment. This matches the way the recommendation is
+     * determined and avoids misleadingly cheap single-segment comparisons.
+     */
+    estimateRunCost: function(runInfo, candidateType, vd) {
+        if(!runInfo) return 0;
+        const rates = {
+            normal: parseFloat(document.getElementById('rate-normal').value),
+            bridge: parseFloat(document.getElementById('rate-bridge').value),
+            tunnel: parseFloat(document.getElementById('rate-tunnel').value),
+            cutfill: parseFloat(document.getElementById('rate-cutfill').value)
+        };
+        const k_grade = parseFloat(document.getElementById('k-grade').value);
+        const k_curve = parseFloat(document.getElementById('k-curve').value);
+        const k_elev = parseFloat(document.getElementById('k-elev').value);
+        const e0 = parseFloat(document.getElementById('e0-limit').value);
+        const speed = parseInt(document.getElementById('design-speed').value);
+        const R_min = (speed * speed) / 22;
+        const sens = app.costEstimator.sensitivities;
+
+        function structuralLengthMultiplier(type, lengthMeters) {
+            const l0_tun = parseFloat(document.getElementById('l0-tun').value);
+            const l0_bri = parseFloat(document.getElementById('l0-bri').value);
+            const k_len_tun = parseFloat(document.getElementById('k-len-tun').value);
+            const k_len_bri = parseFloat(document.getElementById('k-len-bri').value);
+            const l0 = (type === 'tunnel') ? l0_tun : l0_bri;
+            const k = (type === 'tunnel') ? k_len_tun : k_len_bri;
+            const excessKm = Math.max(0, lengthMeters - l0) / 1000;
+            if(excessKm <= 0) return 1.0;
+            if(type === 'bridge') return Math.min(3.0, 1 + k * excessKm * 0.18);
+            return Math.min(4.5, 1 + k * excessKm * 0.25);
+        }
+
+        function cutfillGroupMultiplier(lengthMeters) {
+            if (lengthMeters <= 1000) return 0.8;
+            if (lengthMeters <= 3000) return 1.0;
+            return 1.4;
+        }
+
+        let total = 0;
+        const groupLength = runInfo.runLength;
+        const groupMult = (candidateType === 'bridge' || candidateType === 'tunnel')
+            ? structuralLengthMultiplier(candidateType, groupLength)
+            : ((candidateType === 'cut' || candidateType === 'fill' || candidateType === 'cutfill') ? cutfillGroupMultiplier(groupLength) : 1.0);
+
+        for(let i = runInfo.start; i <= runInfo.end; i++) {
+            const seg = state.segments[i];
+            if(!seg || seg.length_m <= 0) continue;
+            const units = seg.length_m / 100;
+            const rateKey = (candidateType === 'cut' || candidateType === 'fill' || candidateType === 'cutfill') ? 'cutfill' : candidateType;
+            const baseRate = rates[rateKey] || rates.normal;
+            const g = Math.abs((vd.trackGrades && vd.trackGrades[i + 1]) || 0) / 100;
+            const s_g = sens.grade[candidateType] !== undefined ? sens.grade[candidateType] : 1.0;
+            const s_c = sens.curve[candidateType] !== undefined ? sens.curve[candidateType] : 1.0;
+            let multGrade = 1.0;
+            if(candidateType !== 'tunnel' && candidateType !== 'cut' && candidateType !== 'fill' && candidateType !== 'cutfill') {
+                multGrade = Math.exp(k_grade * s_g * g);
+            }
+            let multCurve = 1.0;
+            if(seg.radius && seg.radius > 0 && seg.radius !== Infinity) {
+                multCurve = curveCostMultiplier(candidateType, seg.radius, R_min, k_curve, s_c);
+            }
+            let multElev = 1.0;
+            if(candidateType === 'tunnel') {
+                const excessE = Math.max(0, seg.elev - e0);
+                multElev = Math.exp(k_elev * (excessE / 100));
+            }
+            let envMult = 1.0;
+            if((candidateType === 'cut' || candidateType === 'fill' || candidateType === 'cutfill') && seg.elev <= 1) {
+                envMult = 10.0;
+            }
+            total += baseRate * units * multGrade * multCurve * multElev * groupMult * envMult;
+        }
+        return total;
+    },
+
+    /**
+     * Show a contextual popup when hovering over a problematic segment in build mode.
+     * Presents two repair options: an earthworks solution (cut or fill) and the cheaper of bridge/tunnel.
+     * Each option shows an approximate cost and applies the fix when clicked.
+     * @param {number} segIndex Index of the hovered segment
+     * @param {object} event The mouse event from Leaflet, used to position the popup
+     */
+    showIssuePopup: function(segIndex, event) {
+        if(state.mode !== 'build' || state.isPainting) return;
+        const s = state.segments[segIndex];
+        if(!s) return;
+        this.hideIssuePopup();
+        const vd = this.computeVerticalDesign();
+
+        const curveIssue = !!vd.unresolvedCurve[segIndex];
+        const gradeIssue = !!vd.unresolvedGrade[segIndex];
+        const verticalIssue = !!vd.unresolvedVertical[segIndex];
+        const offset = (vd.avgOffsets && typeof vd.avgOffsets[segIndex] === 'number') ? vd.avgOffsets[segIndex] : 0;
+        const recommendation = vd.verticalRecommendations ? vd.verticalRecommendations[segIndex] : null;
+        const runInfo = verticalIssue ? this.getVerticalRunInfo(segIndex, vd) : null;
+        let heading = 'Resolve Issue';
+        let body = 'This segment needs a design change.';
+        let options = [];
+        let penaltyText = '';
+
+        if(verticalIssue || gradeIssue) {
+            const primary = recommendation || (offset >= 0 ? 'fill' : 'cut');
+            const secondary = primary === 'fill' ? 'bridge' : primary === 'cut' ? 'tunnel' : primary === 'bridge' ? 'fill' : 'cut';
+            heading = 'Resolve Vertical Issue';
+            body = recommendation && vd.verticalMessages[segIndex]
+                ? vd.verticalMessages[segIndex]
+                : (offset >= 0 ? `Track is about ${offset.toFixed(1)} m above ground here.` : `Track is about ${Math.abs(offset).toFixed(1)} m below ground here.`);
+            options = [primary, secondary].filter((value, idx, arr) => arr.indexOf(value) === idx);
+            if((primary === 'fill' || primary === 'cut') && s.elev <= 1) {
+                penaltyText = 'Earthworks at water level are usually poor practice here. Prefer a bridge if the corridor is over water.';
+            }
+            if(runInfo) {
+                body += ` This recommendation is based on the full affected run, about ${(runInfo.runLength / 1000).toFixed(1)} km long, not just this single painted segment.`;
+            }
+            if(runInfo && (primary === 'bridge' || primary === 'tunnel')) {
+                penaltyText = (penaltyText ? penaltyText + ' ' : '') + 'Earthworks have a lower unit rate, but the current rule set treats very deep/high and very long runs as poor earthworks candidates, so the preferred option can still be a bridge or tunnel.';
+            }
+        } else if(curveIssue) {
+            heading = 'Resolve Curvature Issue';
+            body = `Horizontal radius is about ${Math.round(s.radius)} m. Earthworks will not materially fix a plan curvature problem. Try Auto Curve Fix, or use a structure type here.`;
+            options = ['bridge', 'tunnel'];
+        } else {
+            return;
+        }
+
+        const keyFor = type => type === 'fill' ? 'F' : type === 'cut' ? 'C' : type === 'bridge' ? 'B' : 'T';
+        const labelFor = type => type.charAt(0).toUpperCase() + type.slice(1);
+        const optionHtml = options.map(type => {
+            const estimate = runInfo ? this.estimateRunCost(runInfo, type, vd) : 0;
+            const scopeText = runInfo ? 'Approx. run cost' : 'Approx. segment cost';
+            return `
+            <p><strong>${labelFor(type)}:</strong> ${scopeText} $${(estimate / 1000000).toFixed(2)}M</p>
+            <button onclick="app.applyFixChoice(${segIndex}, '${type}')">Press ${keyFor(type)} to use ${labelFor(type)}</button>
+        `;
+        }).join('');
+
+        const div = document.createElement('div');
+        div.className = 'issue-popup';
+        div.dataset.segIndex = String(segIndex);
+        div.innerHTML = `
+            <h5>${heading}</h5>
+            <p>${body}</p>
+            ${optionHtml}
+            ${curveIssue ? `<p style="margin-top:4px; color:#ccc;">Tip: Auto Curve Fix moves control points. Bridge/Tunnel only changes the current painted segment type.</p>` : ''}
+            ${ penaltyText ? `<p style="margin-top:4px; color:#ff8888;">${penaltyText}</p>` : '' }
+        `;
+        div.addEventListener('mouseenter', () => {
+            state.popupPointerInside = true;
+            if(state.popupHideTimer) clearTimeout(state.popupHideTimer);
+        });
+        div.addEventListener('mouseleave', () => {
+            state.popupPointerInside = false;
+            this.hideIssuePopupSoon(120);
+        });
+        const mapContainer = document.getElementById('map');
+        const rect = mapContainer.getBoundingClientRect();
+        let x = rect.left + 10;
+        let y = rect.top + 10;
+        if(event && event.containerPoint) {
+            x = rect.left + event.containerPoint.x + 10;
+            y = rect.top + event.containerPoint.y + 10;
+        } else if(event && event.originalEvent) {
+            x = event.originalEvent.pageX + 10;
+            y = event.originalEvent.pageY + 10;
+        }
+        div.style.left = x + 'px';
+        div.style.top = y + 'px';
+        document.body.appendChild(div);
+        state.currentPopup = div;
+        state.popupPointerInside = false;
+    },
+
+    /**
+     * Hide any visible issue popup.
+     */
+    hideIssuePopup: function() {
+        if(state.popupHideTimer) {
+            clearTimeout(state.popupHideTimer);
+            state.popupHideTimer = null;
+        }
+        state.popupPointerInside = false;
+        if(state.currentPopup) {
+            state.currentPopup.remove();
+            state.currentPopup = null;
+        }
+    },
+
+    /**
+     * Apply the chosen fix for a problematic segment.
+     * This updates the segment's type, hides the popup, and recalculates costs and warnings.
+     * @param {number} segIndex Index of the segment to change
+     * @param {string} newType The new structure type ('cut', 'fill', 'bridge' or 'tunnel')
+     */
+    applyFixChoice: function(segIndex, newType) {
+        const s = state.segments[segIndex];
+        if(!s) return;
+        // Save state for undo
+        this.saveState();
+        s.type = newType;
+        this.hideIssuePopup();
+        this.updateParams();
+    },
+
+    /**
+     * Toggle the terrain overlay layer. Shows or hides an OpenTopoMap layer to assist routing.
+     */
+    toggleTerrain: function() {
+        const btn = document.getElementById('btn-terrain');
+        if(state.terrainLayer) {
+            this.map.removeLayer(state.terrainLayer);
+            state.terrainLayer = null;
+            if(btn) btn.classList.remove('toggle-active');
+        } else {
+            state.terrainLayer = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; OpenTopoMap, OSM'
+            });
+            state.terrainLayer.addTo(this.map);
+            if(btn) btn.classList.add('toggle-active');
+        }
+    },
+
+    /**
+     * Start or exit local KML mode. When not in KML mode, triggers the file input
+     * to let the user select a local .kml file containing contour lines. When a
+     * KML is already loaded, this will exit the mode and remove the overlay.
+     */
+    loadLocalKML: function() {
+        const btn = document.getElementById('btn-kml');
+        // Toggle off if already in local KML mode
+        if(state.localKMLMode) {
+            this.exitLocalKMLMode();
+            return;
+        }
+        // Otherwise, prompt user to select a file
+        const input = document.getElementById('kml-file-input');
+        if(input) {
+            // reset previous selection
+            input.value = '';
+            input.click();
+        }
+    },
+
+    /**
+     * Handle file selection for local KML. Reads the file text and parses
+     * the KML content to extract contour lines.
+     * @param {HTMLInputElement} input file input element
+     */
+    handleLocalKML: function(input) {
+        const file = input.files && input.files[0];
         if(!file) return;
         const reader = new FileReader();
         reader.onload = (e) => {
-            const data = JSON.parse(e.target.result);
-            if(data.costs) {
-                document.getElementById('rate-normal').value = data.costs.normal;
-                document.getElementById('rate-bridge').value = data.costs.bridge;
-                document.getElementById('rate-tunnel').value = data.costs.tunnel;
-            }
-            state.controlPoints.forEach(p => this.map.removeLayer(p));
-            state.controlPoints = [];
-            data.controlPoints.forEach(ll => this.addControlPoint([ll.lat, ll.lng]));
-            setTimeout(() => {
-                if(data.segments) {
-                    state.segments.forEach((s, i) => { if(data.segments[i]) s.type = data.segments[i].type; });
-                    this.updateParams();
-                }
-            }, 5000); 
+            const text = e.target.result;
+            this.parseAndEnterLocalKML(text);
         };
         reader.readAsText(file);
-    }
+    },
+
+    /**
+     * Parse KML text to extract contour polylines with elevations. After parsing,
+     * the KML overlay is added and KML mode is entered.
+     * @param {string} kmlText Raw XML string of the KML file
+     */
+    parseAndEnterLocalKML: function(kmlText) {
+        try {
+            const parser = new DOMParser();
+            const xmlDoc = parser.parseFromString(kmlText, 'application/xml');
+            const placemarks = Array.from(xmlDoc.getElementsByTagName('Placemark'));
+            const features = [];
+            let minLat = 90, maxLat = -90, minLng = 180, maxLng = -180;
+            placemarks.forEach((pm, idx) => {
+                const coordsElem = pm.getElementsByTagName('coordinates')[0];
+                if(!coordsElem) return;
+                const coordsText = coordsElem.textContent.trim();
+                const points = coordsText.split(/\s+/).map(str => {
+                    const parts = str.split(',');
+                    const lon = parseFloat(parts[0]);
+                    const lat = parseFloat(parts[1]);
+                    const elev = parts.length > 2 ? parseFloat(parts[2]) : 0;
+                    // update bounding box
+                    if(lat < minLat) minLat = lat;
+                    if(lat > maxLat) maxLat = lat;
+                    if(lon < minLng) minLng = lon;
+                    if(lon > maxLng) maxLng = lon;
+                    return { lat: lat, lng: lon, elev: elev };
+                });
+                // Altitude from description if present
+                let desc = pm.getElementsByTagName('description')[0];
+                let alt = 0;
+                if(desc && desc.textContent) {
+                    const m = desc.textContent.match(/(-?\d+\.?\d*)/);
+                    if(m) alt = parseFloat(m[1]);
+                }
+                features.push({ points: points, alt: alt });
+            });
+            // Simple validation: ensure the bounding box roughly covers expected region
+            // If bounding box appears outside Australia or unrealistic, alert user
+            if(minLat > -10 || maxLat < -50 || minLng < 110 || maxLng > 160) {
+                alert('The selected KML does not appear to cover the expected area.');
+            }
+            // Ask user how many contours to display (sampling)
+            let step = 1;
+            try {
+                const ans = prompt('Display every nth contour (1 = all)?', '1');
+                if(ans !== null) {
+                    const n = parseInt(ans.trim());
+                    if(n >= 1) step = n;
+                }
+            } catch(err) {}
+            // Build overlay features with sampling
+            const sampled = features.filter((feat, idx) => idx % step === 0);
+            this.enterLocalKMLMode(sampled, [minLat, minLng], [maxLat, maxLng]);
+        } catch(err) {
+            console.error(err);
+            alert('Failed to parse KML file.');
+        }
+    },
+
+    updateKMLScale: function(minAlt, maxAlt) {
+        const scale = document.getElementById('kml-scale');
+        if(!scale) return;
+        state.kmlScaleMinAlt = minAlt;
+        state.kmlScaleMaxAlt = maxAlt;
+        const ticks = [0, 0.25, 0.5, 0.75, 1].map(ratio => {
+            const value = minAlt + (maxAlt - minAlt) * ratio;
+            const fromBottom = ratio * 100;
+            return `<div class="kml-scale-tick" style="bottom:${fromBottom}%;">${Math.round(value)} m</div>`;
+        }).reverse().join('');
+        scale.innerHTML = `
+            <div class="kml-scale-title">Contour Elevation</div>
+            <div class="kml-scale-wrap">
+                <div class="kml-scale-bar"></div>
+                <div class="kml-scale-labels">${ticks}</div>
+            </div>
+        `;
+        scale.style.display = 'block';
+    },
+
+    /**
+     * Enter local KML mode given features and bounding coordinates. Overlays the
+     * contour polylines on the map using a colour scale based on elevation.
+     * Also draws a bounding box restricting user input. The existing route and
+     * controls remain, but interactions outside the box are prevented.
+     * @param {Array} features Array of {points: [{lat,lng,elev}], alt: number}
+     * @param {Array} sw [lat,lng] southwest corner of bounding box
+     * @param {Array} ne [lat,lng] northeast corner of bounding box
+     */
+    enterLocalKMLMode: function(features, sw, ne) {
+        // Switch from online mode to offline mode when a local KML is loaded.
+        if(state.baseLayer && this.map.hasLayer(state.baseLayer)) {
+            this.map.removeLayer(state.baseLayer);
+        }
+        const warn = document.getElementById('map-load-warning');
+        if(warn) warn.remove();
+        // Clean up any previous KML overlay
+        if(state.localKMLLayer) {
+            this.map.removeLayer(state.localKMLLayer);
+            state.localKMLLayer = null;
+        }
+        if(state.kmlBoundingBoxRect) {
+            this.map.removeLayer(state.kmlBoundingBoxRect);
+            state.kmlBoundingBoxRect = null;
+        }
+        // Create layer and add polylines
+        const layer = L.layerGroup();
+        // Determine elevation range for colour scaling
+        let minAlt = Infinity;
+        let maxAlt = -Infinity;
+        features.forEach(f => {
+            if(!isNaN(f.alt)) {
+                if(f.alt < minAlt) minAlt = f.alt;
+                if(f.alt > maxAlt) maxAlt = f.alt;
+            }
+        });
+        const altRange = maxAlt - minAlt || 1;
+        features.forEach(f => {
+            const ratio = (f.alt - minAlt) / altRange;
+            const colour = getContourColor(ratio);
+            const latlngs = f.points.map(p => [p.lat, p.lng]);
+            L.polyline(latlngs, { color: colour, weight: 1.1, opacity: 0.95 }).addTo(layer);
+        });
+        layer.addTo(this.map);
+        this.updateKMLScale(minAlt, maxAlt);
+        // Save to state
+        state.localKMLLayer = layer;
+        state.localKMLFeatures = features.map(feature => ({
+            alt: feature.alt,
+            points: Array.isArray(feature.points) ? feature.points.map(pt => ({
+                lat: pt.lat,
+                lng: pt.lng,
+                elev: pt.elev
+            })) : []
+        }));
+        // Draw bounding box rectangle
+        const bounds = [sw, ne];
+        const rect = L.rectangle(bounds, { color: '#00ff00', weight: 2, dashArray: '4,4' }).addTo(this.map);
+        state.kmlBoundingBox = [sw, ne];
+        state.kmlBoundingBoxRect = rect;
+        // Zoom to bounding box
+        this.map.fitBounds(bounds);
+        // Update button appearance
+        const btn = document.getElementById('btn-kml');
+        if(btn) btn.classList.add('toggle-active');
+        state.localKMLMode = true;
+    },
+
+    /**
+     * Exit local KML mode. Removes the contour overlay and bounding box and
+     * re-enables normal interactions.
+     */
+    exitLocalKMLMode: function() {
+        if(state.localKMLLayer) {
+            this.map.removeLayer(state.localKMLLayer);
+            state.localKMLLayer = null;
+        }
+        if(state.kmlBoundingBoxRect) {
+            this.map.removeLayer(state.kmlBoundingBoxRect);
+            state.kmlBoundingBoxRect = null;
+        }
+        state.kmlBoundingBox = null;
+        state.localKMLFeatures = null;
+        state.localKMLMode = false;
+        if(state.baseLayer && !this.map.hasLayer(state.baseLayer)) {
+            state.baseLayer.addTo(this.map);
+        }
+        const scale = document.getElementById('kml-scale');
+        if(scale) {
+            scale.style.display = 'none';
+            scale.innerHTML = '';
+        }
+        const btn = document.getElementById('btn-kml');
+        if(btn) btn.classList.remove('toggle-active');
+    },
 };
 
 window.onload = () => app.init();
